@@ -11,7 +11,6 @@ def seek(cap, delta_seconds):
     target = max(0.0, current + delta_seconds)
     cap.set(cv2.CAP_PROP_POS_MSEC, target * 1000.0)
 
-
 cap = cv2.VideoCapture(VIDEO_FILE)
 
 if not cap.isOpened():
@@ -26,6 +25,8 @@ print("Controls:")
 print("  Space = log throw impact")
 print("  p     = pause / resume")
 print("  Esc   = quit and save")
+print("  ->    = skip 5s ahead")
+print("  ->    = skip 5s behind")
 
 while True:
     if playing:
