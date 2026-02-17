@@ -2,16 +2,6 @@ import tkinter as tk
 from tkinter import ttk
 
 
-class Spacer(tk.Frame):
-    """
-    A reusable invisible spacer for Tkinter layouts.
-    Can be used with pack or grid.
-    """
-    def __init__(self, master=None, width=0, height=0, **kwargs):
-        super().__init__(master, width=width, height=height, **kwargs)
-        self.pack_propagate(False)
-        self.grid_propagate(False)
-
 class InsertGame(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -30,14 +20,121 @@ class InsertGame(tk.Tk):
         self.team2_score = [tk.IntVar(), tk.IntVar()]
 
         self._build_ui()
-    
+
     def _submit(self):
+        def _get_round1_scores():
+
+            throws = []
+
+            for row in self.team1[0][:2]:
+                for val in row[1:3]:
+                    print(row[0].get(), val.get())
+                    throws.append((row[0].get(), val.get()))
+
+            for row in self.team2[0][:2]:
+                for val in row[1:3]:
+                    print(row[0].get(), val.get())
+                    throws.append((row[0].get(), val.get()))
+
+            for row in self.team1[0][2:]:
+                for val in row[1:3]:
+                    print(row[0].get(), val.get())
+                    throws.append((row[0].get(), val.get()))
+
+            for row in self.team2[0][2:]:
+                for val in row[1:3]:
+                    print(row[0].get(), val.get())
+                    throws.append((row[0].get(), val.get()))
+
+
+            for row in self.team1[0][:2]:
+                for val in row[3:5]:
+                    print(row[0].get(), val.get())
+                    throws.append((row[0].get(), val.get()))
+
+            for row in self.team2[0][:2]:
+                for val in row[3:5]:
+                    print(row[0].get(), val.get())
+                    throws.append((row[0].get(), val.get()))
+
+            for row in self.team1[0][2:]:
+                for val in row[3:5]:
+                    print(row[0].get(), val.get())
+                    throws.append((row[0].get(), val.get()))
+
+            for row in self.team2[0][2:]:
+                for val in row[3:5]:
+                    print(row[0].get(), val.get())
+                    throws.append((row[0].get(), val.get()))
+
+            return throws
+        
+        def _get_round2_scores():
+            throws = []
+
+            for row in self.team2[1][:2]:
+                for val in row[1:3]:
+                    print(row[0].get(), val.get())
+                    throws.append((row[0].get(), val.get()))
+
+            for row in self.team1[1][:2]:
+                for val in row[1:3]:
+                    print(row[0].get(), val.get())
+                    throws.append((row[0].get(), val.get()))
+
+            for row in self.team2[1][2:]:
+                for val in row[1:3]:
+                    print(row[0].get(), val.get())
+                    throws.append((row[0].get(), val.get()))
+
+            for row in self.team1[1][2:]:
+                for val in row[1:3]:
+                    print(row[0].get(), val.get())
+                    throws.append((row[0].get(), val.get()))
+
+
+            for row in self.team2[1][:2]:
+                for val in row[3:5]:
+                    print(row[0].get(), val.get())
+                    throws.append((row[0].get(), val.get()))
+
+            for row in self.team1[1][:2]:
+                for val in row[3:5]:
+                    print(row[0].get(), val.get())
+                    throws.append((row[0].get(), val.get()))
+
+            for row in self.team2[1][2:]:
+                for val in row[3:5]:
+                    print(row[0].get(), val.get())
+                    throws.append((row[0].get(), val.get()))
+
+            for row in self.team1[1][2:]:
+                for val in row[3:5]:
+                    print(row[0].get(), val.get())
+                    throws.append((row[0].get(), val.get()))
+
+            return throws
+
+
         print(f"Teams: {self.team1_name.get()} vs. {self.team2_name.get()}")
         print(f"{self.subtitle.get()} {self.date.get()}\n")
 
-        for row in self.team1[0]:
-            for val in row:
-                print(val.get())
+        throws = []
+
+        throws.extend(_get_round1_scores())
+        throws.extend(_get_round2_scores())
+
+        output = {
+            "date": self.date.get(),
+            "subtitle": self.subtitle.get(),
+            "names": (self.team1_name.get(), self.team2_name.get()),
+            "scores": ((self.team1_score[0].get(), self.team1_score[1].get()),
+                       (self.team2_score[0].get(), self.team2_score[1].get())),
+            "throws": throws
+        }
+
+        print(output)
+        return output
 
     def _build_ui(self):
         # Row 0
