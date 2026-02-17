@@ -1,10 +1,6 @@
-import csv
 from moviepy import *
 from insert_game import InsertGame
-
-VIDEO_FILE = "vid.mp4"
-OUTPUT_FILE = "output.mp4"
-TIMESTAMPS_FILE = "throws.csv"
+from throw_logger import log_video_timestamps
 
 PRE = 4.0  # seconds before throw
 POST = 3.0  # seconds after throw
@@ -14,21 +10,11 @@ debug = {'date': '10.12.1999', 'subtitle': 'Subtitle', 'names': ('Team1', 'Team2
 def build_scoreboard(base_clip, ):
     pass
 
-def main():
-    timestamps = []
-
-    with open(TIMESTAMPS_FILE, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            t = row["timestamp"]
-            h, m, s = t.split(":")
-            seconds = int(h) * 3600 + int(m) * 60 + float(s)
-            timestamps.append(seconds)
-
+def render(videofile, timestamps):
     if not timestamps:
         raise RuntimeError("No timestamps found")
 
-    video = VideoFileClip(VIDEO_FILE)
+    video = VideoFileClip(videofile)
     duration = video.duration
 
     clips = []
@@ -47,13 +33,18 @@ def main():
     final = concatenate_videoclips(clips, method="compose")
 
     final.write_videofile(
-        OUTPUT_FILE,
+        f"edited_{videofile}",
         codec="libx264",
         audio_codec="aac",
         threads=4
     )
 
 if __name__ == "__main__":
-    app = InsertGame()
-    app.mainloop()
-    print(app.output)
+    gamedata = InsertGame()
+    gamedata.mainloop()
+    print(gamedata.output)
+
+    videofile, throwdata = log_video_timestamps()
+    throwdata = sorted(throwdata)
+    print(videofile)
+    print(throwdata)
