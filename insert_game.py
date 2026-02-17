@@ -19,6 +19,8 @@ class InsertGame(tk.Tk):
         self.team1_score = [tk.IntVar(), tk.IntVar()]
         self.team2_score = [tk.IntVar(), tk.IntVar()]
 
+        self.output = None
+
         self._build_ui()
 
     def _submit(self):
@@ -28,36 +30,36 @@ class InsertGame(tk.Tk):
 
             for row in self.team1[0][:2]:
                 for val in row[1:3]:
-                    throws.append((row[0].get(), val.get()))
+                    throws.append((self.team1_name.get(), row[0].get(), val.get()))
 
             for row in self.team2[0][:2]:
                 for val in row[1:3]:
-                    throws.append((row[0].get(), val.get()))
+                    throws.append((self.team2_name.get(), row[0].get(), val.get()))
 
             for row in self.team1[0][2:]:
                 for val in row[1:3]:
-                    throws.append((row[0].get(), val.get()))
+                    throws.append((self.team1_name.get(), row[0].get(), val.get()))
 
             for row in self.team2[0][2:]:
                 for val in row[1:3]:
-                    throws.append((row[0].get(), val.get()))
+                    throws.append((self.team2_name.get(), row[0].get(), val.get()))
 
 
             for row in self.team1[0][:2]:
                 for val in row[3:5]:
-                    throws.append((row[0].get(), val.get()))
+                    throws.append((self.team1_name.get(), row[0].get(), val.get()))
 
             for row in self.team2[0][:2]:
                 for val in row[3:5]:
-                    throws.append((row[0].get(), val.get()))
+                    throws.append((self.team2_name.get(), row[0].get(), val.get()))
 
             for row in self.team1[0][2:]:
                 for val in row[3:5]:
-                    throws.append((row[0].get(), val.get()))
+                    throws.append((self.team1_name.get(), row[0].get(), val.get()))
 
             for row in self.team2[0][2:]:
                 for val in row[3:5]:
-                    throws.append((row[0].get(), val.get()))
+                    throws.append((self.team2_name.get(), row[0].get(), val.get()))
 
             return throws
 
@@ -66,48 +68,45 @@ class InsertGame(tk.Tk):
 
             for row in self.team2[1][:2]:
                 for val in row[1:3]:
-                    throws.append((row[0].get(), val.get()))
+                    throws.append((self.team2_name.get(), row[0].get(), val.get()))
 
             for row in self.team1[1][:2]:
                 for val in row[1:3]:
-                    throws.append((row[0].get(), val.get()))
+                    throws.append((self.team1_name.get(), row[0].get(), val.get()))
 
             for row in self.team2[1][2:]:
                 for val in row[1:3]:
-                    throws.append((row[0].get(), val.get()))
+                    throws.append((self.team2_name.get(), row[0].get(), val.get()))
 
             for row in self.team1[1][2:]:
                 for val in row[1:3]:
-                    throws.append((row[0].get(), val.get()))
+                    throws.append((self.team1_name.get(), row[0].get(), val.get()))
 
 
             for row in self.team2[1][:2]:
                 for val in row[3:5]:
-                    throws.append((row[0].get(), val.get()))
+                    throws.append((self.team2_name.get(), row[0].get(), val.get()))
 
             for row in self.team1[1][:2]:
                 for val in row[3:5]:
-                    throws.append((row[0].get(), val.get()))
+                    throws.append((self.team1_name.get(), row[0].get(), val.get()))
 
             for row in self.team2[1][2:]:
                 for val in row[3:5]:
-                    throws.append((row[0].get(), val.get()))
+                    throws.append((self.team2_name.get(), row[0].get(), val.get()))
 
             for row in self.team1[1][2:]:
                 for val in row[3:5]:
-                    throws.append((row[0].get(), val.get()))
+                    throws.append((self.team1_name.get(), row[0].get(), val.get()))
 
             return throws
 
-
         throws = []
 
-        throws.extend(_get_round1_scores())
-        throws.extend(_get_round2_scores())
+        throws.append([throw for throw in _get_round1_scores() if throw[1] != 'e'])
+        throws.append([throw for throw in _get_round2_scores() if throw[1] != 'e'])
 
-        throws = [throw for throw in throws if throw[1] != 'e']
-
-        output = {
+        self.output = {
             "date": self.date.get(),
             "subtitle": self.subtitle.get(),
             "names": (self.team1_name.get(), self.team2_name.get()),
@@ -116,8 +115,8 @@ class InsertGame(tk.Tk):
             "throws": throws
         }
 
+        #print(self.output)
         self.destroy()
-        return output
 
     def _build_ui(self):
         # Row 0
