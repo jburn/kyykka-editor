@@ -2,6 +2,32 @@ import tkinter as tk
 from tkinter import ttk
 
 
+class GameType(tk.Tk):
+    def __init__(self):
+        super().__init__()
+
+        self.title("Kyykkä-editor")
+        self.output = None
+
+        ttk.Label(self, text="Choose game type").pack(pady=10, padx=10)
+        
+        self.combo = ttk.Combobox(self, values=["1. Talvijoukkuepeli (pöytäkirjallinen)",
+                                   "2. Talvijoukkuepeli",
+                                   "3. Henkkari-/Paripeli",
+                                   "4. Kesäjoukkuepeli"],
+                                   width=32,
+                                   state="readonly")
+        self.combo.current(0)
+        self.combo.pack(pady=10, padx=10)
+
+        ttk.Button(self, text="Continue", command=self._submit).pack(pady=10, padx=10)
+
+    def _submit(self):
+        value = self.combo.get()
+        self.output = int(value[0])
+        self.destroy()
+
+
 class InsertGame(tk.Tk):
     def __init__(self):
         super().__init__()
