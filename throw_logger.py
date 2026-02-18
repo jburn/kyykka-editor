@@ -28,6 +28,19 @@ def pick_video_file():
     root.destroy()
     return file_path or None
 
+def undo_last(cap, timestamps):
+    if not timestamps:
+        return
+
+    last_time = timestamps.pop()
+
+    # Seek back to previous timestamp if exists
+    if timestamps:
+        target = timestamps[-1]
+    else:
+        target = max(0.0, last_time - 2.0)  # small rewind safety
+
+    cap.set(cv2.CAP_PROP_POS_MSEC, target * 1000)
 
 def log_video_timestamps(video_file=None):
     """
@@ -53,11 +66,12 @@ def log_video_timestamps(video_file=None):
     frame = None
 
     print("Controls:")
-    print("  Space = log throw impact")
-    print("  p     = pause / resume")
-    print("  Esc   = quit")
-    print("  ->    = skip 5s ahead")
-    print("  <-    = skip 5s behind")
+    print("  Space     = log throw impact")
+    print("  Backspace = undo last timestamp")
+    print("  p         = pause / resume")
+    print("  Esc       = quit")
+    print("  ->        = skip 5s ahead")
+    print("  <-        = skip 5s behind")
 
     while True:
         if playing:
@@ -82,6 +96,30 @@ def log_video_timestamps(video_file=None):
             2
         )
 
+        throw_number = len(timestamps) + 1
+
+        text = f"Throw: {throw_number}"
+
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        scale = 1.0
+        thickness = 2
+
+        (text_w, text_h), _ = cv2.getTextSize(text, font, scale, thickness)
+
+        x = frame.shape[1] - text_w - 20
+        y = frame.shape[0] - 20
+
+        cv2.putText(
+            display,
+            text,
+            (x, y),
+            font,
+            scale,
+            (255, 255, 255),
+            thickness,
+            cv2.LINE_AA
+        )
+
         if DISPLAY_SCALE != 1.0:
             display = cv2.resize(
                 display,
@@ -103,6 +141,10 @@ def log_video_timestamps(video_file=None):
 
         elif key == ord("p"):
             playing = not playing
+
+        elif key == 8: # BACKSPACE
+            undo_last(cap, timestamps)
+            print(f"Undid last timestamp!")
 
         elif key == 32:  # SPACE
             timestamps.append(pos_s)
