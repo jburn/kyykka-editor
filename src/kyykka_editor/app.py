@@ -174,13 +174,26 @@ class MainWindow(QMainWindow):
         form.addRow("Title", self.title_edit)
         form.addRow("Team 1", self.team_one_edit)
         form.addRow("Team 2", self.team_two_edit)
+        self.score_spins = [QSpinBox() for _ in range(4)]
+        for score in self.score_spins:
+            score.setRange(-100, 100)
+        form.addRow("Round 1 — Team 1", self.score_spins[0])
+        form.addRow("Round 1 — Team 2", self.score_spins[1])
+        form.addRow("Round 2 — Team 1", self.score_spins[2])
+        form.addRow("Round 2 — Team 2", self.score_spins[3])
         form.addRow("Before impact", self.pre_roll)
         form.addRow("After impact", self.post_roll)
         right.addLayout(form)
 
-        right.addWidget(QLabel("Marked impacts"))
-        self.impact_table = QTableWidget(0, 2)
-        self.impact_table.setHorizontalHeaderLabels(["#", "Timestamp"])
+        event_row = QHBoxLayout()
+        self.round_end_button = QPushButton("Mark round 1 end")
+        self.game_end_button = QPushButton("Mark game end")
+        event_row.addWidget(self.round_end_button)
+        event_row.addWidget(self.game_end_button)
+        right.addLayout(event_row)
+        right.addWidget(QLabel("Timeline events"))
+        self.impact_table = QTableWidget(0, 3)
+        self.impact_table.setHorizontalHeaderLabels(["#", "Event", "Timestamp"])
         self.impact_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.impact_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.impact_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -211,6 +224,8 @@ class MainWindow(QMainWindow):
         self.undo_button.clicked.connect(self.undo_impact)
         self.remove_button.clicked.connect(self.remove_selected)
         self.export_button.clicked.connect(self.export_video)
+        self.round_end_button.clicked.connect(self.mark_round_end)
+        self.game_end_button.clicked.connect(self.mark_game_end)
         self.slider.sliderMoved.connect(self.player.setPosition)
         self.slider.seek_requested.connect(self.player.setPosition)
         self.impact_table.cellDoubleClicked.connect(self._seek_to_row)
@@ -222,6 +237,8 @@ class MainWindow(QMainWindow):
             ("Left", lambda: self.seek_relative(-3_000)),
             ("Right", lambda: self.seek_relative(5_000)),
             ("Delete", self.remove_selected),
+            ("Ctrl+R", self.mark_round_end),
+            ("Ctrl+G", self.mark_game_end),
         ):
             self._add_shortcut(keys, callback)
 
@@ -327,22 +344,57 @@ class MainWindow(QMainWindow):
         self._refresh_impacts()
 
     def remove_selected(self) -> None:
-        rows = sorted({index.row() for index in self.impact_table.selectedIndexes()}, reverse=True)
+        timeline = self._timeline_items()
+        rows = sorted({index.row() for index in self.impact_table.selectedIndexes()})
+        impact_indices: list[int] = []
         for row in rows:
-            self.project.remove_impact(row)
+            kind, _timestamp, source_index = timeline[row]
+            if kind == "Impact" and source_index is not None:
+                impact_indices.append(source_index)
+            elif kind == "Round 1 end":
+                self.project.round_one_end_ms = None
+            elif kind == "Game end":
+                self.project.game_end_ms = None
+        for source_index in sorted(impact_indices, reverse=True):
+            self.project.remove_impact(source_index)
         self.mark_history.clear()
         self._refresh_impacts()
 
+    def mark_round_end(self) -> None:
+        if not self.project.video_path:
+            QMessageBox.information(self, "No video", "Open a video before marking events.")
+            return
+        self.project.round_one_end_ms = self.player.position()
+        self._refresh_impacts()
+
+    def mark_game_end(self) -> None:
+        if not self.project.video_path:
+            QMessageBox.information(self, "No video", "Open a video before marking events.")
+            return
+        self.project.game_end_ms = self.player.position()
+        self._refresh_impacts()
+
     def _seek_to_row(self, row: int, _column: int) -> None:
-        self.player.setPosition(self.project.impacts[row].timestamp_ms)
+        self.player.setPosition(self._timeline_items()[row][1])
+
+    def _timeline_items(self) -> list[tuple[str, int, int | None]]:
+        items = [
+            ("Impact", impact.timestamp_ms, index)
+            for index, impact in enumerate(self.project.impacts)
+        ]
+        if self.project.round_one_end_ms is not None:
+            items.append(("Round 1 end", self.project.round_one_end_ms, None))
+        if self.project.game_end_ms is not None:
+            items.append(("Game end", self.project.game_end_ms, None))
+        return sorted(items, key=lambda item: (item[1], item[0]))
 
     def _refresh_impacts(self) -> None:
-        self.impact_table.setRowCount(len(self.project.impacts))
-        for row, impact in enumerate(self.project.impacts):
+        timeline = self._timeline_items()
+        self.impact_table.setRowCount(len(timeline))
+        for row, (kind, timestamp, _source_index) in enumerate(timeline):
             self.impact_table.setItem(row, 0, QTableWidgetItem(str(row + 1)))
-            self.impact_table.setItem(
-                row, 1, QTableWidgetItem(format_timestamp(impact.timestamp_ms))
-            )
+            self.impact_table.setItem(row, 1, QTableWidgetItem(kind))
+            self.impact_table.setItem(row, 2, QTableWidgetItem(format_timestamp(timestamp)))
         self.undo_button.setEnabled(bool(self.mark_history))
 
     def _position_changed(self, position: int) -> None:
@@ -358,6 +410,12 @@ class MainWindow(QMainWindow):
         self.project.title = self.title_edit.text().strip()
         self.project.team_one = self.team_one_edit.text().strip()
         self.project.team_two = self.team_two_edit.text().strip()
+        (
+            self.project.team_one_round_one_score,
+            self.project.team_two_round_one_score,
+            self.project.team_one_round_two_score,
+            self.project.team_two_round_two_score,
+        ) = (score.value() for score in self.score_spins)
         self.project.pre_roll_ms = self.pre_roll.value() * 1_000
         self.project.post_roll_ms = self.post_roll.value() * 1_000
 
@@ -365,6 +423,17 @@ class MainWindow(QMainWindow):
         self.title_edit.setText(self.project.title)
         self.team_one_edit.setText(self.project.team_one)
         self.team_two_edit.setText(self.project.team_two)
+        for score, value in zip(
+            self.score_spins,
+            (
+                self.project.team_one_round_one_score,
+                self.project.team_two_round_one_score,
+                self.project.team_one_round_two_score,
+                self.project.team_two_round_two_score,
+            ),
+            strict=True,
+        ):
+            score.setValue(value)
         self.pre_roll.setValue(self.project.pre_roll_ms // 1_000)
         self.post_roll.setValue(self.project.post_roll_ms // 1_000)
         self._refresh_impacts()

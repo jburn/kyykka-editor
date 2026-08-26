@@ -22,6 +22,12 @@ class EditorProject:
     title: str = ""
     team_one: str = ""
     team_two: str = ""
+    team_one_round_one_score: int = 0
+    team_two_round_one_score: int = 0
+    team_one_round_two_score: int = 0
+    team_two_round_two_score: int = 0
+    round_one_end_ms: int | None = None
+    game_end_ms: int | None = None
     pre_roll_ms: int = 4_000
     post_roll_ms: int = 3_000
     impacts: list[Impact] = field(default_factory=list)
@@ -34,6 +40,22 @@ class EditorProject:
 
     def remove_impact(self, index: int) -> Impact:
         return self.impacts.pop(index)
+
+    @property
+    def team_one_total(self) -> int:
+        return self.team_one_round_one_score + self.team_one_round_two_score
+
+    @property
+    def team_two_total(self) -> int:
+        return self.team_two_round_one_score + self.team_two_round_two_score
+
+    @property
+    def winner(self) -> str | None:
+        if self.team_one_total == self.team_two_total:
+            return None
+        if self.team_one_total > self.team_two_total:
+            return self.team_one or "Team 1"
+        return self.team_two or "Team 2"
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), indent=2, ensure_ascii=False)

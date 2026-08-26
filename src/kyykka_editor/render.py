@@ -4,6 +4,7 @@ import json
 import shutil
 import subprocess
 import uuid
+from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from PySide6.QtGui import QColor, QFont, QImage, QPainter
 from .model import EditorProject
 
 TITLE_DURATION_MS = 4_000
+SCORE_CARD_DURATION_MS = 8_000
 
 
 class RenderError(RuntimeError):
@@ -112,6 +114,77 @@ def create_title_card(project: EditorProject, path: Path, size: tuple[int, int])
         raise RenderError("Could not create the title screen image")
 
 
+def create_score_card(
+    project: EditorProject,
+    path: Path,
+    size: tuple[int, int],
+    final: bool,
+) -> None:
+    width, height = size
+    image = QImage(width, height, QImage.Format.Format_RGB32)
+    image.fill(QColor("#12213a"))
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(QColor("white"))
+    heading = "Lopputulos" if final else "1. puolen tulos"
+    one_score = project.team_one_total if final else project.team_one_round_one_score
+    two_score = project.team_two_total if final else project.team_two_round_one_score
+
+    painter.setFont(QFont("Arial", max(20, height // 25), QFont.Weight.Bold))
+    painter.drawText(
+        QRect(width // 10, height // 8, width * 4 // 5, height // 6),
+        Qt.AlignmentFlag.AlignCenter,
+        heading,
+    )
+    if final:
+        team_font_size = max(24, height // 17)
+        team_one_name = project.team_one or "Joukkue 1"
+        team_two_name = project.team_two or "Joukkue 2"
+
+        def team_font(name: str) -> QFont:
+            font = QFont("Arial", team_font_size)
+            if project.winner == name:
+                font.setBold(True)
+                font.setUnderline(True)
+            return font
+
+        while True:
+            normal_font = QFont("Arial", team_font_size)
+            segments = (
+                (team_one_name, team_font(team_one_name)),
+                (f" {one_score} - {two_score} ", normal_font),
+                (team_two_name, team_font(team_two_name)),
+            )
+            widths = []
+            for text, font in segments:
+                painter.setFont(font)
+                widths.append(painter.fontMetrics().horizontalAdvance(text))
+            if sum(widths) <= width * 9 // 10 or team_font_size <= 14:
+                break
+            team_font_size -= 2
+        x = (width - sum(widths)) // 2
+        painter.setPen(QColor("white"))
+        for (text, font), text_width in zip(segments, widths, strict=True):
+            painter.setFont(font)
+            painter.drawText(
+                QRect(x, height * 2 // 5, text_width, height // 5),
+                Qt.AlignmentFlag.AlignVCenter,
+                text,
+            )
+            x += text_width
+    else:
+        painter.setFont(QFont("Arial", max(24, height // 16), QFont.Weight.Bold))
+        painter.drawText(
+            QRect(width // 12, height // 3, width * 5 // 6, height // 4),
+            Qt.AlignmentFlag.AlignCenter,
+            f"{project.team_one or 'Joukkue 1'}  {one_score} — {two_score}  "
+            f"{project.team_two or 'Joukkue 2'}",
+        )
+    painter.end()
+    if not image.save(str(path), "PNG"):
+        raise RenderError("Could not create the score screen image")
+
+
 def build_intervals(project: EditorProject, duration_ms: int) -> list[tuple[float, float]]:
     """Return merged highlight intervals in seconds."""
     intervals: list[tuple[int, int]] = []
@@ -132,16 +205,40 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
         raise RenderError("FFmpeg was not found on PATH")
     if not project.video_path:
         raise RenderError("No source video is selected")
-    intervals = build_intervals(project, duration_ms)
-    if not intervals:
+    if (
+        project.round_one_end_ms is not None
+        and project.game_end_ms is not None
+        and project.game_end_ms < project.round_one_end_ms
+    ):
+        raise RenderError("The game-end marker must be after the round-one marker")
+    included_impacts = [
+        impact
+        for impact in project.impacts
+        if project.game_end_ms is None or impact.timestamp_ms <= project.game_end_ms
+    ]
+    if not included_impacts:
         raise RenderError("Mark at least one impact before exporting")
+    if project.round_one_end_ms is None:
+        interval_groups = [build_intervals(replace(project, impacts=included_impacts), duration_ms)]
+    else:
+        first = [
+            impact for impact in included_impacts if impact.timestamp_ms <= project.round_one_end_ms
+        ]
+        second = [
+            impact for impact in included_impacts if impact.timestamp_ms > project.round_one_end_ms
+        ]
+        interval_groups = [
+            build_intervals(replace(project, impacts=first), duration_ms),
+            build_intervals(replace(project, impacts=second), duration_ms),
+        ]
 
     has_audio = source_has_audio(project.video_path)
     title_seconds = TITLE_DURATION_MS / 1_000
+    score_card_seconds = SCORE_CARD_DURATION_MS / 1_000
     frame_rate = source_frame_rate(project.video_path)
     frame_rate_ffmpeg = f"{frame_rate.numerator}/{frame_rate.denominator}"
 
-    title_path: Path | None = None
+    temporary_paths: list[Path] = []
     command = [ffmpeg, "-y", "-fflags", "+genpts", "-i", project.video_path]
     filters: list[str] = []
     video_labels: list[str] = []
@@ -149,6 +246,7 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
 
     width, height = source_dimensions(project.video_path)
     title_path = output_path.parent / f".kyykka-title-{uuid.uuid4().hex}.png"
+    temporary_paths.append(title_path)
     create_title_card(project, title_path, (width, height))
     command.extend(
         [
@@ -186,20 +284,75 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
         )
         audio_labels.append("[titlea]")
 
-    for index, (start, end) in enumerate(intervals):
-        filters.append(
-            f"[0:v]trim=start={start:.3f}:end={end:.3f},fps={frame_rate_ffmpeg},"
-            f"scale={width}:{height},setsar=1,format=yuv420p,"
-            f"settb=AVTB,setpts=N/(({frame_rate_ffmpeg})*TB)[v{index}]"
+    input_index = 3 if has_audio else 2
+    clip_index = 0
+    card_index = 0
+
+    def add_score_screen(final: bool) -> None:
+        nonlocal input_index, card_index
+        card_path = output_path.parent / f".kyykka-score-{uuid.uuid4().hex}.png"
+        temporary_paths.append(card_path)
+        create_score_card(project, card_path, (width, height), final)
+        command.extend(
+            [
+                "-loop",
+                "1",
+                "-framerate",
+                frame_rate_ffmpeg,
+                "-t",
+                f"{score_card_seconds:.3f}",
+                "-i",
+                str(card_path),
+            ]
         )
-        video_labels.append(f"[v{index}]")
+        filters.append(
+            f"[{input_index}:v]scale={width}:{height},setsar=1,format=yuv420p,"
+            f"trim=duration={score_card_seconds:.3f},settb=AVTB,"
+            f"setpts=N/(({frame_rate_ffmpeg})*TB)[cardv{card_index}]"
+        )
+        video_labels.append(f"[cardv{card_index}]")
+        input_index += 1
         if has_audio:
-            filters.append(
-                f"[0:a]atrim=start={start:.3f}:end={end:.3f},aresample=48000,"
-                "aformat=sample_rates=48000:channel_layouts=stereo,"
-                f"asetpts=N/SR/TB[a{index}]"
+            command.extend(
+                [
+                    "-f",
+                    "lavfi",
+                    "-t",
+                    f"{score_card_seconds:.3f}",
+                    "-i",
+                    "anullsrc=sample_rate=48000:channel_layout=stereo",
+                ]
             )
-            audio_labels.append(f"[a{index}]")
+            filters.append(
+                f"[{input_index}:a]atrim=duration={score_card_seconds:.3f},"
+                "aformat=sample_rates=48000:channel_layouts=stereo,"
+                f"asetpts=N/SR/TB[carda{card_index}]"
+            )
+            audio_labels.append(f"[carda{card_index}]")
+            input_index += 1
+        card_index += 1
+
+    for group_index, intervals in enumerate(interval_groups):
+        for start, end in intervals:
+            filters.append(
+                f"[0:v]trim=start={start:.3f}:end={end:.3f},fps={frame_rate_ffmpeg},"
+                f"scale={width}:{height},setsar=1,format=yuv420p,"
+                f"settb=AVTB,setpts=N/(({frame_rate_ffmpeg})*TB)[v{clip_index}]"
+            )
+            video_labels.append(f"[v{clip_index}]")
+            if has_audio:
+                filters.append(
+                    f"[0:a]atrim=start={start:.3f}:end={end:.3f},aresample=48000,"
+                    "aformat=sample_rates=48000:channel_layouts=stereo,"
+                    f"asetpts=N/SR/TB[a{clip_index}]"
+                )
+                audio_labels.append(f"[a{clip_index}]")
+            clip_index += 1
+        if group_index == 0 and project.round_one_end_ms is not None:
+            add_score_screen(final=False)
+
+    if project.game_end_ms is not None:
+        add_score_screen(final=True)
 
     if has_audio:
         segment_inputs = "".join(
@@ -238,8 +391,8 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
             command, capture_output=True, text=True, encoding="utf-8", check=False
         )
     finally:
-        if title_path is not None:
-            title_path.unlink(missing_ok=True)
+        for temporary_path in temporary_paths:
+            temporary_path.unlink(missing_ok=True)
 
     if result.returncode:
         lines = result.stderr.strip().splitlines()

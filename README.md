@@ -10,6 +10,7 @@ a compact highlight video around those moments.
 - Keyboard shortcuts mirroring the graphical controls
 - Editable impact list
 - Four-second title screen using the match title and team names
+- Timeline events for the round-one result and final result/winner screens
 - Saveable JSON project files
 - FFmpeg-based highlight rendering
 
