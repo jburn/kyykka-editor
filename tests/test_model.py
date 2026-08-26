@@ -10,13 +10,19 @@ from kyykka_editor.model import (
 
 def test_impacts_are_sorted_when_added() -> None:
     project = EditorProject()
-    project.add_impact(5_000)
-    project.add_impact(1_000)
+    project.add_impact(5_000, "Second")
+    project.add_impact(1_000, "First")
     assert [impact.timestamp_ms for impact in project.impacts] == [1_000, 5_000]
+    assert [impact.thrower for impact in project.impacts] == ["First", "Second"]
 
 
 def test_project_json_round_trip() -> None:
-    original = EditorProject(video_path="match.mp4", impacts=[Impact(1_234)])
+    original = EditorProject(
+        video_path="match.mp4",
+        team_one_players=["Matti", "Maija"],
+        team_two_players=["Liisa"],
+        impacts=[Impact(1_234, "Matti")],
+    )
     assert EditorProject.from_json(original.to_json()) == original
 
 

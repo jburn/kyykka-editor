@@ -10,20 +10,25 @@ os.environ.setdefault("QT_MEDIA_BACKEND", "ffmpeg")
 os.environ.setdefault("QT_FFMPEG_DEBUG", "0")
 os.environ.setdefault("QT_LOGGING_RULES", "qt.multimedia.ffmpeg.*=false")
 
-from PySide6.QtCore import QStandardPaths, Qt, QThread, QUrl, Signal
+from PySide6.QtCore import QStandardPaths, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QAction, QKeySequence, QMouseEvent
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QPlainTextEdit,
     QProgressBar,
     QPushButton,
     QSlider,
@@ -38,6 +43,92 @@ from PySide6.QtWidgets import (
 
 from .model import EditorProject, default_export_filename, format_timestamp
 from .render import RenderError, render_highlights
+
+
+class ProjectDialog(QDialog):
+    def __init__(self, project: EditorProject, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Match details")
+        self.setMinimumWidth(560)
+        form = QFormLayout(self)
+        self.title_edit = QLineEdit(project.title)
+        self.team_one_edit = QLineEdit(project.team_one)
+        self.team_two_edit = QLineEdit(project.team_two)
+        self.video_edit = QLineEdit(project.video_path)
+        browse = QPushButton("Browse…")
+        browse.clicked.connect(self._browse_video)
+        video_row = QHBoxLayout()
+        video_row.addWidget(self.video_edit, 1)
+        video_row.addWidget(browse)
+        self.players_one = QPlainTextEdit("\n".join(project.team_one_players))
+        self.players_two = QPlainTextEdit("\n".join(project.team_two_players))
+        self.players_one.setPlaceholderText("One player per line")
+        self.players_two.setPlaceholderText("One player per line")
+        self.scores = [QSpinBox() for _ in range(4)]
+        values = (
+            project.team_one_round_one_score,
+            project.team_two_round_one_score,
+            project.team_one_round_two_score,
+            project.team_two_round_two_score,
+        )
+        for score, value in zip(self.scores, values, strict=True):
+            score.setRange(-100, 100)
+            score.setValue(value)
+        form.addRow("Match title", self.title_edit)
+        form.addRow("Video", video_row)
+        form.addRow("Team 1", self.team_one_edit)
+        form.addRow("Team 1 players", self.players_one)
+        form.addRow("Team 2", self.team_two_edit)
+        form.addRow("Team 2 players", self.players_two)
+        score_grid = QGridLayout()
+        score_grid.addWidget(QLabel("Round 1"), 0, 1)
+        score_grid.addWidget(QLabel("Round 2"), 0, 2)
+        self.score_team_one = QLabel(project.team_one or "Team 1")
+        self.score_team_two = QLabel(project.team_two or "Team 2")
+        self.team_one_edit.textChanged.connect(
+            lambda name: self.score_team_one.setText(name.strip() or "Team 1")
+        )
+        self.team_two_edit.textChanged.connect(
+            lambda name: self.score_team_two.setText(name.strip() or "Team 2")
+        )
+        score_grid.addWidget(self.score_team_one, 1, 0)
+        score_grid.addWidget(self.scores[0], 1, 1)
+        score_grid.addWidget(self.scores[2], 1, 2)
+        score_grid.addWidget(self.score_team_two, 2, 0)
+        score_grid.addWidget(self.scores[1], 2, 1)
+        score_grid.addWidget(self.scores[3], 2, 2)
+        form.addRow("Scores", score_grid)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        form.addRow(buttons)
+
+    def _browse_video(self) -> None:
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Open video", "", "Video files (*.mp4 *.mov *.mkv *.avi *.m4v);;All files (*)"
+        )
+        if filename:
+            self.video_edit.setText(filename)
+
+    def apply_to(self, project: EditorProject) -> None:
+        project.title = self.title_edit.text().strip()
+        project.video_path = self.video_edit.text().strip()
+        project.team_one = self.team_one_edit.text().strip()
+        project.team_two = self.team_two_edit.text().strip()
+        project.team_one_players = self._players(self.players_one)
+        project.team_two_players = self._players(self.players_two)
+        (
+            project.team_one_round_one_score,
+            project.team_two_round_one_score,
+            project.team_one_round_two_score,
+            project.team_two_round_two_score,
+        ) = (score.value() for score in self.scores)
+
+    @staticmethod
+    def _players(editor: QPlainTextEdit) -> list[str]:
+        return [line.strip() for line in editor.toPlainText().splitlines() if line.strip()]
 
 
 class SeekSlider(QSlider):
@@ -160,29 +251,20 @@ class MainWindow(QMainWindow):
         left.addLayout(controls)
 
         form = QFormLayout()
-        self.title_edit, self.team_one_edit, self.team_two_edit = (
-            QLineEdit(),
-            QLineEdit(),
-            QLineEdit(),
-        )
         self.pre_roll, self.post_roll = QSpinBox(), QSpinBox()
         for spin in (self.pre_roll, self.post_roll):
             spin.setRange(0, 30)
             spin.setSuffix(" s")
         self.pre_roll.setValue(4)
         self.post_roll.setValue(3)
-        form.addRow("Title", self.title_edit)
-        form.addRow("Team 1", self.team_one_edit)
-        form.addRow("Team 2", self.team_two_edit)
-        self.score_spins = [QSpinBox() for _ in range(4)]
-        for score in self.score_spins:
-            score.setRange(-100, 100)
-        form.addRow("Round 1 — Team 1", self.score_spins[0])
-        form.addRow("Round 1 — Team 2", self.score_spins[1])
-        form.addRow("Round 2 — Team 1", self.score_spins[2])
-        form.addRow("Round 2 — Team 2", self.score_spins[3])
+        self.thrower_combo = QComboBox()
+        self.thrower_combo.setEditable(True)
+        self.details_button = QPushButton("Match details…")
+        self.details_button.clicked.connect(self.edit_project_details)
+        form.addRow("Current thrower", self.thrower_combo)
         form.addRow("Before impact", self.pre_roll)
         form.addRow("After impact", self.post_roll)
+        form.addRow(self.details_button)
         right.addLayout(form)
 
         event_row = QHBoxLayout()
@@ -245,6 +327,8 @@ class MainWindow(QMainWindow):
     def _build_menu(self) -> None:
         menu = self.menuBar().addMenu("&File")
         for text, shortcut, callback in (
+            ("New project…", "Ctrl+N", self.new_project),
+            ("Match details…", "Ctrl+D", self.edit_project_details),
             ("Open video…", "Ctrl+O", self.open_video),
             ("Open project…", "Ctrl+Shift+O", self.open_project),
             ("Save project", "Ctrl+S", self.save_project),
@@ -254,6 +338,25 @@ class MainWindow(QMainWindow):
             action.setShortcut(QKeySequence(shortcut))
             action.triggered.connect(callback)
             menu.addAction(action)
+
+    def new_project(self) -> None:
+        candidate = EditorProject()
+        dialog = ProjectDialog(candidate, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        dialog.apply_to(candidate)
+        self.player.stop()
+        self.project = candidate
+        self.project_path = None
+        self.mark_history.clear()
+        self._load_form()
+
+    def edit_project_details(self) -> None:
+        dialog = ProjectDialog(self.project, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        dialog.apply_to(self.project)
+        self._load_form()
 
     def _add_shortcut(self, keys: str, callback: Callable[[], None]) -> None:
         action = QAction(self)
@@ -329,7 +432,7 @@ class MainWindow(QMainWindow):
         if not self.project.video_path:
             QMessageBox.information(self, "No video", "Open a video before marking impacts.")
             return
-        self.project.add_impact(self.player.position())
+        self.project.add_impact(self.player.position(), self.thrower_combo.currentText())
         self.mark_history.append(self.player.position())
         self._refresh_impacts()
 
@@ -349,7 +452,7 @@ class MainWindow(QMainWindow):
         impact_indices: list[int] = []
         for row in rows:
             kind, _timestamp, source_index = timeline[row]
-            if kind == "Impact" and source_index is not None:
+            if kind.startswith("Impact") and source_index is not None:
                 impact_indices.append(source_index)
             elif kind == "Round 1 end":
                 self.project.round_one_end_ms = None
@@ -379,7 +482,11 @@ class MainWindow(QMainWindow):
 
     def _timeline_items(self) -> list[tuple[str, int, int | None]]:
         items = [
-            ("Impact", impact.timestamp_ms, index)
+            (
+                f"Impact — {impact.thrower}" if impact.thrower else "Impact",
+                impact.timestamp_ms,
+                index,
+            )
             for index, impact in enumerate(self.project.impacts)
         ]
         if self.project.round_one_end_ms is not None:
@@ -407,33 +514,12 @@ class MainWindow(QMainWindow):
         self.duration_label.setText(format_timestamp(duration))
 
     def _sync_form(self) -> None:
-        self.project.title = self.title_edit.text().strip()
-        self.project.team_one = self.team_one_edit.text().strip()
-        self.project.team_two = self.team_two_edit.text().strip()
-        (
-            self.project.team_one_round_one_score,
-            self.project.team_two_round_one_score,
-            self.project.team_one_round_two_score,
-            self.project.team_two_round_two_score,
-        ) = (score.value() for score in self.score_spins)
         self.project.pre_roll_ms = self.pre_roll.value() * 1_000
         self.project.post_roll_ms = self.post_roll.value() * 1_000
 
     def _load_form(self) -> None:
-        self.title_edit.setText(self.project.title)
-        self.team_one_edit.setText(self.project.team_one)
-        self.team_two_edit.setText(self.project.team_two)
-        for score, value in zip(
-            self.score_spins,
-            (
-                self.project.team_one_round_one_score,
-                self.project.team_two_round_one_score,
-                self.project.team_one_round_two_score,
-                self.project.team_two_round_two_score,
-            ),
-            strict=True,
-        ):
-            score.setValue(value)
+        self.thrower_combo.clear()
+        self.thrower_combo.addItems(self.project.team_one_players + self.project.team_two_players)
         self.pre_roll.setValue(self.project.pre_roll_ms // 1_000)
         self.post_roll.setValue(self.project.post_roll_ms // 1_000)
         self._refresh_impacts()
@@ -524,4 +610,5 @@ def main() -> int:
     app.setApplicationName("Kyykka Editor")
     window = MainWindow()
     window.show()
+    QTimer.singleShot(0, window.new_project)
     return app.exec()

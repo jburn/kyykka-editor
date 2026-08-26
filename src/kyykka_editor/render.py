@@ -4,7 +4,6 @@ import json
 import shutil
 import subprocess
 import uuid
-from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
 
@@ -185,6 +184,30 @@ def create_score_card(
         raise RenderError("Could not create the score screen image")
 
 
+def create_thrower_overlay(name: str, path: Path, size: tuple[int, int]) -> None:
+    width, height = size
+    image = QImage(width, height, QImage.Format.Format_ARGB32)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    font = QFont("Arial", max(16, height // 32), QFont.Weight.Bold)
+    painter.setFont(font)
+    metrics = painter.fontMetrics()
+    padding_x = max(16, width // 100)
+    padding_y = max(10, height // 100)
+    box_width = metrics.horizontalAdvance(name) + padding_x * 2
+    box_height = metrics.height() + padding_y * 2
+    box = QRect(width // 40, height - box_height - height // 24, box_width, box_height)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(0, 0, 0, 150))
+    painter.drawRoundedRect(box, padding_y, padding_y)
+    painter.setPen(QColor("white"))
+    painter.drawText(box, Qt.AlignmentFlag.AlignCenter, name)
+    painter.end()
+    if not image.save(str(path), "PNG"):
+        raise RenderError("Could not create the thrower overlay")
+
+
 def build_intervals(project: EditorProject, duration_ms: int) -> list[tuple[float, float]]:
     """Return merged highlight intervals in seconds."""
     intervals: list[tuple[int, int]] = []
@@ -219,7 +242,7 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
     if not included_impacts:
         raise RenderError("Mark at least one impact before exporting")
     if project.round_one_end_ms is None:
-        interval_groups = [build_intervals(replace(project, impacts=included_impacts), duration_ms)]
+        impact_groups = [included_impacts]
     else:
         first = [
             impact for impact in included_impacts if impact.timestamp_ms <= project.round_one_end_ms
@@ -227,10 +250,7 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
         second = [
             impact for impact in included_impacts if impact.timestamp_ms > project.round_one_end_ms
         ]
-        interval_groups = [
-            build_intervals(replace(project, impacts=first), duration_ms),
-            build_intervals(replace(project, impacts=second), duration_ms),
-        ]
+        impact_groups = [first, second]
 
     has_audio = source_has_audio(project.video_path)
     title_seconds = TITLE_DURATION_MS / 1_000
@@ -332,13 +352,32 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
             input_index += 1
         card_index += 1
 
-    for group_index, intervals in enumerate(interval_groups):
-        for start, end in intervals:
+    for group_index, impacts in enumerate(impact_groups):
+        for impact in impacts:
+            start = max(0, impact.timestamp_ms - project.pre_roll_ms) / 1_000
+            end = min(duration_ms, impact.timestamp_ms + project.post_roll_ms) / 1_000
+            if end <= start:
+                continue
             filters.append(
                 f"[0:v]trim=start={start:.3f}:end={end:.3f},fps={frame_rate_ffmpeg},"
                 f"scale={width}:{height},setsar=1,format=yuv420p,"
-                f"settb=AVTB,setpts=N/(({frame_rate_ffmpeg})*TB)[v{clip_index}]"
+                f"settb=AVTB,setpts=N/(({frame_rate_ffmpeg})*TB)[basev{clip_index}]"
             )
+            if impact.thrower:
+                overlay_path = output_path.parent / f".kyykka-thrower-{uuid.uuid4().hex}.png"
+                temporary_paths.append(overlay_path)
+                create_thrower_overlay(impact.thrower, overlay_path, (width, height))
+                command.extend(
+                    ["-loop", "1", "-framerate", frame_rate_ffmpeg, "-i", str(overlay_path)]
+                )
+                filters.append(
+                    f"[{input_index}:v]format=rgba[overlay{clip_index}];"
+                    f"[basev{clip_index}][overlay{clip_index}]"
+                    f"overlay=0:0:shortest=1[v{clip_index}]"
+                )
+                input_index += 1
+            else:
+                filters.append(f"[basev{clip_index}]null[v{clip_index}]")
             video_labels.append(f"[v{clip_index}]")
             if has_audio:
                 filters.append(

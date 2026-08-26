@@ -11,6 +11,8 @@ a compact highlight video around those moments.
 - Editable impact list
 - Four-second title screen using the match title and team names
 - Timeline events for the round-one result and final result/winner screens
+- Persistent bottom-left thrower-name overlay on each marked highlight
+- Match setup dialog for title, video, teams, scores, and player rosters
 - Saveable JSON project files
 - FFmpeg-based highlight rendering
 

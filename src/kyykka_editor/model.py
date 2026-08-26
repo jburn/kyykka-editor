@@ -10,6 +10,7 @@ from pathlib import Path
 @dataclass(order=True, slots=True)
 class Impact:
     timestamp_ms: int
+    thrower: str = field(default="", compare=False)
 
     def __post_init__(self) -> None:
         if self.timestamp_ms < 0:
@@ -22,6 +23,8 @@ class EditorProject:
     title: str = ""
     team_one: str = ""
     team_two: str = ""
+    team_one_players: list[str] = field(default_factory=list)
+    team_two_players: list[str] = field(default_factory=list)
     team_one_round_one_score: int = 0
     team_two_round_one_score: int = 0
     team_one_round_two_score: int = 0
@@ -32,8 +35,8 @@ class EditorProject:
     post_roll_ms: int = 3_000
     impacts: list[Impact] = field(default_factory=list)
 
-    def add_impact(self, timestamp_ms: int) -> Impact:
-        impact = Impact(timestamp_ms)
+    def add_impact(self, timestamp_ms: int, thrower: str = "") -> Impact:
+        impact = Impact(timestamp_ms, thrower.strip())
         self.impacts.append(impact)
         self.impacts.sort()
         return impact
