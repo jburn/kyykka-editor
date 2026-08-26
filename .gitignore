@@ -168,6 +168,21 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+# Kyykka Editor local media, exports, and environments
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.m4v
+*.kyykka.json
+.venv/
+venv/
+.test-tmp/
+.pip-tmp/
+dist/
+build/
+*.egg-info/
+
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
