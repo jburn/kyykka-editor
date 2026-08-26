@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -56,3 +58,20 @@ def format_timestamp(milliseconds: int) -> str:
     minutes, seconds = divmod(seconds, 60)
     hours, minutes = divmod(minutes, 60)
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{millis:03d}"
+
+
+def default_export_filename(project: EditorProject) -> str:
+    title = project.title.strip() or "Kyykka highlights"
+    teams = [name.strip() for name in (project.team_one, project.team_two) if name.strip()]
+    if teams and not all(name.casefold() in title.casefold() for name in teams):
+        title = f"{title} - {' vs. '.join(teams)}"
+
+    ascii_name = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode()
+    safe_name = re.sub(r"[^a-z0-9]+", "_", ascii_name.casefold()).strip("_")
+    safe_name = safe_name[:140].rstrip("_") or "kyykka_highlights"
+    reserved = {"con", "prn", "aux", "nul"} | {
+        f"{prefix}{number}" for prefix in ("com", "lpt") for number in range(1, 10)
+    }
+    if safe_name.casefold() in reserved:
+        safe_name = f"kyykka_{safe_name}"
+    return f"{safe_name}.mp4"

@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .model import EditorProject, format_timestamp
+from .model import EditorProject, default_export_filename, format_timestamp
 from .render import RenderError, render_highlights
 
 
@@ -417,7 +417,7 @@ class MainWindow(QMainWindow):
         filename, _ = QFileDialog.getSaveFileName(
             self,
             "Export highlights",
-            str(Path(default_dir) / "kyykka-highlights.mp4"),
+            str(Path(default_dir) / default_export_filename(self.project)),
             "MP4 video (*.mp4)",
         )
         if not filename:
