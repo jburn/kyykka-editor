@@ -1,5 +1,8 @@
 # Third-party notices
 
+Kyykka Editor itself is licensed under GPL-3.0-or-later. See `LICENSE`. The
+components below retain their respective copyrights and licenses.
+
 ## FFmpeg and FFprobe
 
 This application distribution may include FFmpeg and FFprobe executables. FFmpeg is a

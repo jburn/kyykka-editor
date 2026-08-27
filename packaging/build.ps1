@@ -45,6 +45,10 @@ try {
 
 $OutputDirectory = Join-Path $ProjectRoot "dist\KyykkaEditor"
 Copy-Item `
+    -LiteralPath (Join-Path $ProjectRoot "LICENSE") `
+    -Destination (Join-Path $OutputDirectory "LICENSE") `
+    -Force
+Copy-Item `
     -LiteralPath (Join-Path $ProjectRoot "THIRD_PARTY_NOTICES.md") `
     -Destination (Join-Path $OutputDirectory "THIRD_PARTY_NOTICES.md") `
     -Force
@@ -52,6 +56,7 @@ $RequiredOutput = @(
     (Join-Path $OutputDirectory "KyykkaEditor.exe"),
     (Join-Path $OutputDirectory "_internal\kyykka_editor\bin\ffmpeg.exe"),
     (Join-Path $OutputDirectory "_internal\kyykka_editor\bin\ffprobe.exe"),
+    (Join-Path $OutputDirectory "LICENSE"),
     (Join-Path $OutputDirectory "THIRD_PARTY_NOTICES.md")
 )
 foreach ($OutputPath in $RequiredOutput) {

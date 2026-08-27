@@ -4,7 +4,8 @@ from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import QApplication
 
-from kyykka_editor.app import MainWindow, ProjectDialog, SeekSlider
+from kyykka_editor import __version__
+from kyykka_editor.app import PROJECT_URL, AboutDialog, MainWindow, ProjectDialog, SeekSlider
 from kyykka_editor.model import EditorProject, Impact
 
 
@@ -35,6 +36,16 @@ def test_project_dialog_applies_match_details(qapp: QApplication, tmp_path: Path
     assert dialog.video_label.text() == "match.mp4"
 
 
+def test_about_dialog_contains_version_license_and_contact(qapp: QApplication) -> None:
+    dialog = AboutDialog()
+    assert __version__ in dialog.version_label.text()
+    assert PROJECT_URL in dialog.contact_label.text()
+    assert "FFmpeg" in dialog.license_text.toPlainText()
+    assert "GPL-3.0-or-later" in dialog.license_text.toPlainText()
+    assert "There is no warranty" in dialog.license_text.toPlainText()
+    assert dialog.license_text.isReadOnly()
+
+
 def test_seek_slider_click_emits_requested_position(qapp: QApplication) -> None:
     slider = SeekSlider(Qt.Orientation.Horizontal)
     slider.resize(400, 30)
@@ -60,11 +71,14 @@ def test_main_window_timeline_is_sorted_and_player_list_is_fixed(
     )
     window._load_form()
     assert not window.thrower_combo.isEditable()
+    assert window.impact_table.verticalHeader().isHidden()
     assert [window.thrower_combo.itemText(i) for i in range(window.thrower_combo.count())] == [
+        "",
         "Alice",
         "Bob",
         "Carol",
     ]
+    assert window.thrower_combo.currentText() == ""
     assert [window.impact_table.item(row, 1).text() for row in range(4)] == [
         "Impact — Alice",
         "Round 1 end",

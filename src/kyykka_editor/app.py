@@ -42,10 +42,65 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from . import __version__
 from .model import EditorProject, default_export_filename, format_timestamp
 from .render import RenderError, render_highlights
 
 ICON_PATH = Path(__file__).with_name("assets") / "kyykka-editor.png"
+PROJECT_URL = "https://github.com/jburn/kyykka-editor"
+
+
+class AboutDialog(QDialog):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("About Kyykkä Editor")
+        self.setWindowIcon(QIcon(str(ICON_PATH)))
+        self.setMinimumSize(540, 440)
+        layout = QVBoxLayout(self)
+
+        icon = QLabel()
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon.setPixmap(QIcon(str(ICON_PATH)).pixmap(96, 96))
+        layout.addWidget(icon)
+
+        build_kind = (
+            "Packaged Windows application" if getattr(sys, "frozen", False) else "Development build"
+        )
+        self.version_label = QLabel(
+            f"<h2>Kyykkä Editor</h2>"
+            f"<p><b>Version:</b> {__version__}<br><b>Build:</b> {build_kind}</p>"
+        )
+        self.version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.version_label)
+
+        self.contact_label = QLabel(
+            f'<p><b>Contact and project:</b> <a href="{PROJECT_URL}">{PROJECT_URL}</a></p>'
+        )
+        self.contact_label.setOpenExternalLinks(True)
+        self.contact_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        layout.addWidget(self.contact_label)
+
+        layout.addWidget(QLabel("License information"))
+        self.license_text = QPlainTextEdit()
+        self.license_text.setReadOnly(True)
+        self.license_text.setPlainText(
+            "Kyykkä Editor\n"
+            "Copyright © 2026 jburn and contributors.\n"
+            "Licensed under the GNU General Public License, version 3 or later "
+            "(GPL-3.0-or-later). You may use, study, share, and modify the application "
+            "under those terms. There is no warranty. See LICENSE in the application "
+            "directory for the complete license.\n\n"
+            "FFmpeg and FFprobe\n"
+            "The packaged Gyan full build is GPL-enabled. The exact obligations depend on "
+            "the included build. See THIRD_PARTY_NOTICES.md in the application directory.\n\n"
+            "PySide6 / Qt for Python\n"
+            "Available under LGPLv3, GPLv3, and commercial licensing terms."
+        )
+        layout.addWidget(self.license_text, 1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
 
 
 class ProjectDialog(QDialog):
@@ -292,6 +347,7 @@ class MainWindow(QMainWindow):
         right.addWidget(QLabel("Timeline events"))
         self.impact_table = QTableWidget(0, 3)
         self.impact_table.setHorizontalHeaderLabels(["#", "Event", "Timestamp"])
+        self.impact_table.verticalHeader().hide()
         self.impact_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.impact_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.impact_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -349,6 +405,14 @@ class MainWindow(QMainWindow):
             action.setShortcut(QKeySequence(shortcut))
             action.triggered.connect(callback)
             menu.addAction(action)
+
+        help_menu = self.menuBar().addMenu("&Help")
+        about_action = QAction("&About Kyykkä Editor…", self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
+
+    def show_about(self) -> None:
+        AboutDialog(self).exec()
 
     def new_project(self) -> None:
         candidate = EditorProject()
@@ -516,6 +580,7 @@ class MainWindow(QMainWindow):
 
     def _load_form(self) -> None:
         self.thrower_combo.clear()
+        self.thrower_combo.addItem("")
         self.thrower_combo.addItems(self.project.team_one_players + self.project.team_two_players)
         self.pre_roll.setValue(self.project.pre_roll_ms // 1_000)
         self.post_roll.setValue(self.project.post_roll_ms // 1_000)

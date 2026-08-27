@@ -18,6 +18,7 @@ a = Analysis(
     binaries=[(str(path), "kyykka_editor/bin") for path in required_tools],
     datas=[
         (str(project_root / "src/kyykka_editor/assets"), "kyykka_editor/assets"),
+        (str(project_root / "LICENSE"), "."),
         (str(project_root / "THIRD_PARTY_NOTICES.md"), "."),
     ],
     hiddenimports=[],

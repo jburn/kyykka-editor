@@ -25,7 +25,9 @@ jobs:
           $required = @(
             "dist/KyykkaEditor/KyykkaEditor.exe",
             "dist/KyykkaEditor/_internal/kyykka_editor/bin/ffmpeg.exe",
-            "dist/KyykkaEditor/_internal/kyykka_editor/bin/ffprobe.exe"
+            "dist/KyykkaEditor/_internal/kyykka_editor/bin/ffprobe.exe",
+            "dist/KyykkaEditor/LICENSE",
+            "dist/KyykkaEditor/THIRD_PARTY_NOTICES.md"
           )
           foreach ($path in $required) {
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {

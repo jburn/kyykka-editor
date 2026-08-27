@@ -1,5 +1,7 @@
 # Kyykka Editor
 
+Copyright © 2026 jburn and contributors.
+
 A desktop application for marking impacts in a kyykka match video and rendering
 a compact highlight video around those moments.
 
@@ -68,6 +70,14 @@ Share the complete `dist\KyykkaEditor` directory, not just `KyykkaEditor.exe`.
 The application uses its bundled FFmpeg tools and only falls back to `PATH` in a
 development installation. Review [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 before distributing the package.
+
+## License
+
+Kyykka Editor is free software licensed under the
+[GNU General Public License, version 3 or later](LICENSE). You may use, study,
+share, and modify it under the terms of that license. Distributed builds also
+contain separately licensed components; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Controls
 
