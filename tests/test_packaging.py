@@ -58,7 +58,10 @@ def test_version_tags_publish_github_releases() -> None:
     assert "actions/download-artifact@v4" in workflow
     assert "contents: write" in workflow
     assert 'gh release create "$GITHUB_REF_NAME"' in workflow
-    assert 'gh release upload "$GITHUB_REF_NAME" "$asset" --clobber' in workflow
+    assert 'gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"' in workflow
+    assert 'gh release upload "$GITHUB_REF_NAME" "$asset"' in workflow
+    assert workflow.count('--repo "$GITHUB_REPOSITORY"') == 3
+    assert "--clobber" in workflow
     assert "--generate-notes" in workflow
 
 

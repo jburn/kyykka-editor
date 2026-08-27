@@ -123,10 +123,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           asset="dist/KyykkaEditor-windows-x64.zip#Kyykka Editor for Windows (x64)"
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "$asset" --clobber
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$asset" \
+              --clobber \
+              --repo "$GITHUB_REPOSITORY"
           else
             gh release create "$GITHUB_REF_NAME" "$asset" \
+              --repo "$GITHUB_REPOSITORY" \
               --verify-tag \
               --generate-notes \
               --title "Kyykka Editor $GITHUB_REF_NAME"
