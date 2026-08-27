@@ -2,23 +2,60 @@ name: Test
 
 on:
   push:
-  pull_request:
+    branches: [main]
+    tags: ["v*"]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
 
 jobs:
   test:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.review.state == 'approved' && github.event.pull_request.base.ref == 'main')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
+      - name: Download verified FFmpeg 9.0.1
+        shell: pwsh
+        env:
+          FFMPEG_SHA256: fec81ae03971d9dd4be3ebe02e263bd2ec1d789483f931bdba5f5715e65da2e9
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "ffmpeg-9.0.1-essentials_build.zip"
+          $extract = Join-Path $env:RUNNER_TEMP "ffmpeg-9.0.1"
+          Invoke-WebRequest `
+            -Uri "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.1-essentials_build.zip" `
+            -OutFile $archive
+          $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $env:FFMPEG_SHA256) {
+            throw "FFmpeg checksum mismatch: expected $env:FFMPEG_SHA256, got $actualHash"
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath $extract
+          $ffmpeg = Get-ChildItem -LiteralPath $extract -Filter ffmpeg.exe -Recurse |
+            Select-Object -First 1
+          $ffprobe = Get-ChildItem -LiteralPath $extract -Filter ffprobe.exe -Recurse |
+            Select-Object -First 1
+          if (-not $ffmpeg -or -not $ffprobe -or $ffmpeg.DirectoryName -ne $ffprobe.DirectoryName) {
+            throw "The verified archive does not contain FFmpeg and FFprobe in one bin directory"
+          }
+          "FFMPEG_BIN=$($ffmpeg.DirectoryName)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          $ffmpeg.DirectoryName | Out-File $env:GITHUB_PATH -Append -Encoding utf8
       - run: python -m pip install -e ".[dev]"
       - run: ruff format --check .
       - run: ruff check .
       - run: pytest -m "not integration" --cov=kyykka_editor --cov-report=term-missing --cov-fail-under=70
       - run: pytest -m integration
-      - run: powershell -File packaging/build.ps1
+      - name: Build Windows package
+        shell: pwsh
+        run: .\packaging\build.ps1 -FFmpegBin $env:FFMPEG_BIN
       - name: Verify packaged tools
         shell: pwsh
         run: |
@@ -34,3 +71,63 @@ jobs:
               throw "Missing packaged file: $path"
             }
           }
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: KyykkaEditor-windows-x64-${{ github.event.pull_request.head.sha || github.sha }}
+          path: dist/KyykkaEditor
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+      - name: Verify release version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $applicationVersion = python -c "from kyykka_editor import __version__; print(__version__)"
+          $expectedTag = "v$applicationVersion"
+          if ($env:GITHUB_REF_NAME -ne $expectedTag) {
+            throw "Release tag $env:GITHUB_REF_NAME does not match application version $applicationVersion"
+          }
+      - name: Create release archive
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path dist/KyykkaEditor `
+            -DestinationPath dist/KyykkaEditor-windows-x64.zip `
+            -CompressionLevel Optimal
+      - name: Stage release archive
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-package
+          path: dist/KyykkaEditor-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  release:
+    needs: test
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release archive
+        uses: actions/download-artifact@v4
+        with:
+          name: release-package
+          path: dist
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          asset="dist/KyykkaEditor-windows-x64.zip#Kyykka Editor for Windows (x64)"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$asset" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$asset" \
+              --verify-tag \
+              --generate-notes \
+              --title "Kyykka Editor $GITHUB_REF_NAME"
+          fi

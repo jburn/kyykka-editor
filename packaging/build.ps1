@@ -1,9 +1,31 @@
 param(
-    [string]$FFmpegBin = ""
+    [string]$FFmpegBin = "",
+    [string]$PythonPath = ""
 )
 
 $ErrorActionPreference = "Stop"
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+
+if ($PythonPath) {
+    $PythonExecutable = (Resolve-Path -LiteralPath $PythonPath).Path
+} else {
+    $PythonCandidates = @()
+    if ($env:VIRTUAL_ENV) {
+        $PythonCandidates += Join-Path $env:VIRTUAL_ENV "Scripts\python.exe"
+    }
+    $PythonCandidates += Join-Path $ProjectRoot "venv\Scripts\python.exe"
+    $PythonCandidates += Join-Path $ProjectRoot ".venv\Scripts\python.exe"
+    $PathPython = Get-Command python.exe -ErrorAction SilentlyContinue
+    if ($PathPython) {
+        $PythonCandidates += $PathPython.Source
+    }
+    $PythonExecutable = $PythonCandidates |
+        Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+        Select-Object -First 1
+    if (-not $PythonExecutable) {
+        throw "Python was not found. Activate the development environment or pass -PythonPath."
+    }
+}
 
 if ($FFmpegBin) {
     $ResolvedBin = (Resolve-Path -LiteralPath $FFmpegBin).Path
@@ -30,7 +52,7 @@ foreach ($Tool in @("ffmpeg.exe", "ffprobe.exe")) {
 
 $env:KYYKKA_FFMPEG_BIN = $ResolvedBin
 try {
-    & (Join-Path $ProjectRoot "venv\Scripts\python.exe") -m PyInstaller `
+    & $PythonExecutable -m PyInstaller `
         --noconfirm `
         --clean `
         --distpath (Join-Path $ProjectRoot "dist") `

@@ -70,6 +70,30 @@ The application uses its bundled FFmpeg tools and only falls back to `PATH` in a
 development installation. Review [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 before distributing the package.
 
+Successful GitHub Actions runs for pushes to `main` and approved pull requests
+targeting `main` create a downloadable Windows ZIP artifact. Open the run's
+summary page and download `KyykkaEditor-windows-x64-…` from the **Artifacts**
+section. CI artifacts are retained for 14 days; they are development packages,
+not GitHub Releases.
+
+CI downloads the pinned Gyan FFmpeg 9.0.1 essentials build and verifies its
+published SHA-256 checksum before running integration tests or packaging it.
+
+### Publish a release
+
+Set `src/kyykka_editor/__init__.py` and `pyproject.toml` to the same version,
+merge that change into `main`, and push a matching `v` tag:
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+CI verifies that the tag matches the application version, runs the complete
+test/package pipeline, and publishes a GitHub Release containing
+`KyykkaEditor-windows-x64.zip` with generated release notes. A mismatched tag
+fails without creating a release.
+
 ## License
 
 Kyykka Editor is free software licensed under the

@@ -10,7 +10,10 @@ separate project and is not owned by the Kyykka Editor authors.
 
 - Project: https://ffmpeg.org/
 - License information: https://ffmpeg.org/legal.html
-- Source code: https://ffmpeg.org/download.html#get-sources
+- CI binary provider: https://www.gyan.dev/ffmpeg/builds/
+- Packaged CI version: FFmpeg 9.0.1 essentials build
+- Corresponding FFmpeg revision: https://github.com/FFmpeg/FFmpeg/commit/bf1b838f2a
+- Source downloads: https://ffmpeg.org/download.html#get-sources
 
 The exact applicable license depends on the options used to build the included binaries.
 Distributors are responsible for retaining the binary provider's license and build information
