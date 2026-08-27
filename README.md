@@ -34,7 +34,18 @@ The installed `kyykka-editor` command launches as a GUI application on Windows,
 without opening a console for Qt/FFmpeg backend diagnostics. Run `python main.py`
 only when those diagnostics are useful during development.
 
-For development, install `.[dev]` and run `pytest`.
+For development, install `.[dev]` and run:
+
+```powershell
+ruff format --check .
+ruff check .
+pytest -m "not integration"
+pytest -m integration
+```
+
+Integration tests generate a small video, render a complete highlight with the
+real FFmpeg executable, and inspect the result with FFprobe. They require both
+programs on `PATH`. The same checks run on Windows in GitHub Actions.
 
 ## Controls
 

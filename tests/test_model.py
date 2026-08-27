@@ -55,3 +55,43 @@ def test_game_total_and_winner_use_both_rounds() -> None:
     )
     assert (project.team_one_total, project.team_two_total) == (2, -1)
     assert project.winner == "One"
+
+
+def test_tied_game_has_no_winner() -> None:
+    project = EditorProject(
+        team_one="One",
+        team_two="Two",
+        team_one_round_one_score=2,
+        team_two_round_one_score=1,
+        team_one_round_two_score=-1,
+        team_two_round_two_score=0,
+    )
+    assert project.winner is None
+
+
+def test_winner_uses_fallback_name_when_team_name_is_empty() -> None:
+    project = EditorProject(team_one_round_one_score=1)
+    assert project.winner == "Team 1"
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("", "kyykka_highlights.mp4"),
+        ("CON", "kyykka_con.mp4"),
+        ("!!!", "kyykka_highlights.mp4"),
+    ],
+)
+def test_export_filename_handles_empty_and_windows_reserved_names(
+    title: str, expected: str
+) -> None:
+    assert default_export_filename(EditorProject(title=title)) == expected
+
+
+def test_export_filename_is_bounded() -> None:
+    filename = default_export_filename(EditorProject(title="a" * 300))
+    assert filename == f"{'a' * 140}.mp4"
+
+
+def test_timestamp_clamps_negative_values() -> None:
+    assert format_timestamp(-1) == "00:00:00.000"

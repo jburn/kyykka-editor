@@ -49,7 +49,8 @@ def _probe(video_path: str, entries: str, stream: str) -> subprocess.CompletedPr
 def source_has_audio(video_path: str) -> bool:
     try:
         result = _probe(video_path, "stream=index", "a:0")
-        return result.returncode == 0 and bool(json.loads(result.stdout).get("streams"))
+        payload = json.loads(result.stdout)
+        return result.returncode == 0 and isinstance(payload, dict) and bool(payload.get("streams"))
     except (RenderError, json.JSONDecodeError):
         return False
 
@@ -67,8 +68,14 @@ def source_frame_rate(video_path: str) -> Fraction:
     result = _probe(video_path, "stream=avg_frame_rate,r_frame_rate", "v:0")
     try:
         stream = json.loads(result.stdout)["streams"][0]
-        nominal = Fraction(stream.get("r_frame_rate", "0/1"))
-        average = Fraction(stream.get("avg_frame_rate", "0/1"))
+        try:
+            nominal = Fraction(stream.get("r_frame_rate", "0/1"))
+        except (ValueError, ZeroDivisionError):
+            nominal = Fraction(0)
+        try:
+            average = Fraction(stream.get("avg_frame_rate", "0/1"))
+        except (ValueError, ZeroDivisionError):
+            average = Fraction(0)
         rate = nominal if nominal > 0 else average
         if rate <= 0:
             raise ValueError
