@@ -1,7 +1,5 @@
 # Kyykkä Editor
 
-Copyright © 2026 jburn and contributors.
-
 A desktop application for marking impacts in a kyykkä match video and rendering
 a compact highlight video around those moments.
 
