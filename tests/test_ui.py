@@ -71,7 +71,12 @@ def test_main_window_timeline_is_sorted_and_player_list_is_fixed(
     )
     window._load_form()
     assert not window.thrower_combo.isEditable()
-    assert window.impact_table.verticalHeader().isHidden()
+    assert not window.impact_table.verticalHeader().isHidden()
+    assert window.impact_table.columnCount() == 2
+    assert [window.impact_table.horizontalHeaderItem(column).text() for column in range(2)] == [
+        "Event",
+        "Timestamp",
+    ]
     assert [window.thrower_combo.itemText(i) for i in range(window.thrower_combo.count())] == [
         "",
         "Alice",
@@ -79,7 +84,7 @@ def test_main_window_timeline_is_sorted_and_player_list_is_fixed(
         "Carol",
     ]
     assert window.thrower_combo.currentText() == ""
-    assert [window.impact_table.item(row, 1).text() for row in range(4)] == [
+    assert [window.impact_table.item(row, 0).text() for row in range(4)] == [
         "Impact — Alice",
         "Round 1 end",
         "Impact — Bob",

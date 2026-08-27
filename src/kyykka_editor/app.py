@@ -345,10 +345,9 @@ class MainWindow(QMainWindow):
         event_row.addWidget(self.game_end_button)
         right.addLayout(event_row)
         right.addWidget(QLabel("Timeline events"))
-        self.impact_table = QTableWidget(0, 3)
-        self.impact_table.setHorizontalHeaderLabels(["#", "Event", "Timestamp"])
-        self.impact_table.verticalHeader().hide()
-        self.impact_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.impact_table = QTableWidget(0, 2)
+        self.impact_table.setHorizontalHeaderLabels(["Event", "Timestamp"])
+        self.impact_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.impact_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.impact_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         right.addWidget(self.impact_table, 1)
@@ -560,9 +559,8 @@ class MainWindow(QMainWindow):
         timeline = self._timeline_items()
         self.impact_table.setRowCount(len(timeline))
         for row, (kind, timestamp, _source_index) in enumerate(timeline):
-            self.impact_table.setItem(row, 0, QTableWidgetItem(str(row + 1)))
-            self.impact_table.setItem(row, 1, QTableWidgetItem(kind))
-            self.impact_table.setItem(row, 2, QTableWidgetItem(format_timestamp(timestamp)))
+            self.impact_table.setItem(row, 0, QTableWidgetItem(kind))
+            self.impact_table.setItem(row, 1, QTableWidgetItem(format_timestamp(timestamp)))
         self.undo_button.setEnabled(bool(self.mark_history))
 
     def _position_changed(self, position: int) -> None:

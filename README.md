@@ -5,6 +5,12 @@ Copyright © 2026 jburn and contributors.
 A desktop application for marking impacts in a kyykkä match video and rendering
 a compact highlight video around those moments.
 
+## Screenshots
+
+![Main editor](docs/screenshots/editor.png)
+
+![Match details](docs/screenshots/match-details.png)
+
 ## Features
 
 - Integrated video playback and scrubbing
