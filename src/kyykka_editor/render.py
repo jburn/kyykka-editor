@@ -9,7 +9,7 @@ from fractions import Fraction
 from pathlib import Path
 
 from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QColor, QFont, QImage, QPainter
+from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen
 
 from .model import EditorProject
 
@@ -167,50 +167,80 @@ def create_score_card(
         Qt.AlignmentFlag.AlignCenter,
         heading,
     )
-    if final:
-        team_font_size = max(24, height // 17)
-        team_one_name = project.team_one or "Joukkue 1"
-        team_two_name = project.team_two or "Joukkue 2"
+    team_font_size = max(24, height // 17)
+    team_one_name = project.team_one or "Joukkue 1"
+    team_two_name = project.team_two or "Joukkue 2"
+    name_score_gap = max(14, width // 80)
+    center_gap = max(48, width // 9)
+    score_padding = max(16, width // 100)
 
-        def team_font(name: str) -> QFont:
-            font = QFont("Arial", team_font_size)
-            if project.winner == name:
-                font.setBold(True)
-                font.setUnderline(True)
-            return font
+    def team_font(name: str) -> QFont:
+        font = QFont("Arial", team_font_size)
+        if not final:
+            font.setBold(True)
+        elif project.winner == name:
+            font.setBold(True)
+            font.setUnderline(True)
+        return font
 
-        while True:
-            normal_font = QFont("Arial", team_font_size)
-            segments = (
-                (team_one_name, team_font(team_one_name)),
-                (f" {one_score} - {two_score} ", normal_font),
-                (team_two_name, team_font(team_two_name)),
-            )
-            widths = []
-            for text, font in segments:
-                painter.setFont(font)
-                widths.append(painter.fontMetrics().horizontalAdvance(text))
-            if sum(widths) <= width * 9 // 10 or team_font_size <= 14:
-                break
-            team_font_size -= 2
-        x = (width - sum(widths)) // 2
-        painter.setPen(QColor("white"))
-        for (text, font), text_width in zip(segments, widths, strict=True):
-            painter.setFont(font)
-            painter.drawText(
-                QRect(x, height * 2 // 5, text_width, height // 5),
-                Qt.AlignmentFlag.AlignVCenter,
-                text,
-            )
-            x += text_width
-    else:
-        painter.setFont(QFont("Arial", max(24, height // 16), QFont.Weight.Bold))
-        painter.drawText(
-            QRect(width // 12, height // 3, width * 5 // 6, height // 4),
-            Qt.AlignmentFlag.AlignCenter,
-            f"{project.team_one or 'Joukkue 1'}  {one_score} — {two_score}  "
-            f"{project.team_two or 'Joukkue 2'}",
+    while True:
+        score_font = QFont("Arial", team_font_size, QFont.Weight.Bold)
+        painter.setFont(team_font(team_one_name))
+        team_one_width = painter.fontMetrics().horizontalAdvance(team_one_name)
+        painter.setFont(team_font(team_two_name))
+        team_two_width = painter.fontMetrics().horizontalAdvance(team_two_name)
+        painter.setFont(score_font)
+        score_one_width = (
+            painter.fontMetrics().horizontalAdvance(str(one_score)) + 2 * score_padding
         )
+        score_two_width = (
+            painter.fontMetrics().horizontalAdvance(str(two_score)) + 2 * score_padding
+        )
+        total_width = (
+            team_one_width
+            + name_score_gap
+            + score_one_width
+            + center_gap
+            + score_two_width
+            + name_score_gap
+            + team_two_width
+        )
+        if total_width <= width * 9 // 10 or team_font_size <= 14:
+            break
+        team_font_size -= 2
+
+    row_height = max(height // 8, team_font_size * 2)
+    row_y = height * 2 // 5
+    x = (width - total_width) // 2
+    painter.setPen(QColor("white"))
+    painter.setFont(team_font(team_one_name))
+    painter.drawText(
+        QRect(x, row_y, team_one_width, row_height),
+        Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
+        team_one_name,
+    )
+    x += team_one_width + name_score_gap
+
+    def draw_score(score: int, box_width: int, box_x: int) -> None:
+        box = QRect(box_x, row_y, box_width, row_height)
+        painter.setPen(QPen(QColor(255, 255, 255, 180), max(1, height // 360)))
+        painter.setBrush(QColor(0, 0, 0, 45))
+        painter.drawRoundedRect(box, 10, 10)
+        painter.setPen(QColor("white"))
+        painter.setFont(score_font)
+        painter.drawText(box, Qt.AlignmentFlag.AlignCenter, str(score))
+
+    draw_score(one_score, score_one_width, x)
+    x += score_one_width + center_gap
+    draw_score(two_score, score_two_width, x)
+    x += score_two_width + name_score_gap
+    painter.setPen(QColor("white"))
+    painter.setFont(team_font(team_two_name))
+    painter.drawText(
+        QRect(x, row_y, team_two_width, row_height),
+        Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+        team_two_name,
+    )
     painter.end()
     if not image.save(str(path), "PNG"):
         raise RenderError("Could not create the score screen image")
