@@ -1,8 +1,8 @@
-# Kyykka Editor
+# Kyykkä Editor
 
 Copyright © 2026 jburn and contributors.
 
-A desktop application for marking impacts in a kyykka match video and rendering
+A desktop application for marking impacts in a kyykkä match video and rendering
 a compact highlight video around those moments.
 
 ## Features
@@ -10,12 +10,11 @@ a compact highlight video around those moments.
 - Integrated video playback and scrubbing
 - Visible controls for every marking action
 - Keyboard shortcuts mirroring the graphical controls
-- Editable impact list
-- Four-second title screen using the match title and team names
+- Editable throw list
+- Title screen using the match title and team names
 - Timeline events for the round-one result and final result/winner screens
-- Persistent bottom-left thrower-name overlay on each marked highlight
+- Optional persistent bottom-left thrower-name overlay on each marked highlight
 - Match setup dialog for title, video, teams, scores, and player rosters
-- Custom OAMK application and Windows icon
 - FFmpeg-based highlight rendering
 
 ## Requirements
