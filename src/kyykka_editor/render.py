@@ -14,6 +14,8 @@ from .model import EditorProject
 
 TITLE_DURATION_MS = 4_000
 SCORE_CARD_DURATION_MS = 8_000
+EDGE_CLIP_EXTENSION_MS = 3_000
+CROSSFADE_SECONDS = 1.0
 
 
 class RenderError(RuntimeError):
@@ -65,7 +67,9 @@ def source_frame_rate(video_path: str) -> Fraction:
     result = _probe(video_path, "stream=avg_frame_rate,r_frame_rate", "v:0")
     try:
         stream = json.loads(result.stdout)["streams"][0]
-        rate = Fraction(stream.get("avg_frame_rate") or stream["r_frame_rate"])
+        nominal = Fraction(stream.get("r_frame_rate", "0/1"))
+        average = Fraction(stream.get("avg_frame_rate", "0/1"))
+        rate = nominal if nominal > 0 else average
         if rate <= 0:
             raise ValueError
         return rate
@@ -83,7 +87,7 @@ def source_frame_rate(video_path: str) -> Fraction:
 def create_title_card(project: EditorProject, path: Path, size: tuple[int, int]) -> None:
     width, height = size
     image = QImage(width, height, QImage.Format.Format_RGB32)
-    image.fill(QColor("#12213a"))
+    image.fill(QColor("#2a76bc"))
     painter = QPainter(image)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setPen(QColor("white"))
@@ -228,6 +232,8 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
         raise RenderError("FFmpeg was not found on PATH")
     if not project.video_path:
         raise RenderError("No source video is selected")
+    if Path(project.video_path).resolve() == output_path.resolve():
+        raise RenderError("The export file must be different from the source video")
     if (
         project.round_one_end_ms is not None
         and project.game_end_ms is not None
@@ -263,6 +269,8 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
     filters: list[str] = []
     video_labels: list[str] = []
     audio_labels: list[str] = []
+    segment_kinds: list[str] = []
+    segment_durations: list[float] = []
 
     width, height = source_dimensions(project.video_path)
     title_path = output_path.parent / f".kyykka-title-{uuid.uuid4().hex}.png"
@@ -286,6 +294,8 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
         f"setpts=N/(({frame_rate_ffmpeg})*TB)[titlev]"
     )
     video_labels.append("[titlev]")
+    segment_kinds.append("title")
+    segment_durations.append(title_seconds)
     if has_audio:
         command.extend(
             [
@@ -331,6 +341,8 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
             f"setpts=N/(({frame_rate_ffmpeg})*TB)[cardv{card_index}]"
         )
         video_labels.append(f"[cardv{card_index}]")
+        segment_kinds.append("final" if final else "round")
+        segment_durations.append(score_card_seconds)
         input_index += 1
         if has_audio:
             command.extend(
@@ -354,8 +366,16 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
 
     for group_index, impacts in enumerate(impact_groups):
         for impact in impacts:
-            start = max(0, impact.timestamp_ms - project.pre_roll_ms) / 1_000
-            end = min(duration_ms, impact.timestamp_ms + project.post_roll_ms) / 1_000
+            extra_before = EDGE_CLIP_EXTENSION_MS if impact is included_impacts[0] else 0
+            extra_after = EDGE_CLIP_EXTENSION_MS if impact is included_impacts[-1] else 0
+            start = max(0, impact.timestamp_ms - project.pre_roll_ms - extra_before) / 1_000
+            end = (
+                min(
+                    duration_ms,
+                    impact.timestamp_ms + project.post_roll_ms + extra_after,
+                )
+                / 1_000
+            )
             if end <= start:
                 continue
             filters.append(
@@ -379,6 +399,8 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
             else:
                 filters.append(f"[basev{clip_index}]null[v{clip_index}]")
             video_labels.append(f"[v{clip_index}]")
+            segment_kinds.append("clip")
+            segment_durations.append(end - start)
             if has_audio:
                 filters.append(
                     f"[0:a]atrim=start={start:.3f}:end={end:.3f},aresample=48000,"
@@ -393,6 +415,46 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
     if project.game_end_ms is not None:
         add_score_screen(final=True)
 
+    def crossfade_pair(index: int, output_prefix: str) -> None:
+        fade_duration = min(
+            CROSSFADE_SECONDS,
+            segment_durations[index] / 2,
+            segment_durations[index + 1] / 2,
+        )
+        output_video = f"[{output_prefix}v]"
+        output_audio = f"[{output_prefix}a]"
+        filters.append(
+            f"{video_labels[index]}{video_labels[index + 1]}xfade=transition=fade:"
+            f"duration={fade_duration:.3f}:"
+            f"offset={segment_durations[index] - fade_duration:.6f}{output_video}"
+        )
+        if has_audio:
+            filters.append(
+                f"{audio_labels[index]}{audio_labels[index + 1]}"
+                f"acrossfade=d={fade_duration:.3f}{output_audio}"
+            )
+        video_labels[index : index + 2] = [output_video]
+        if has_audio:
+            audio_labels[index : index + 2] = [output_audio]
+        segment_durations[index : index + 2] = [
+            segment_durations[index] + segment_durations[index + 1] - fade_duration
+        ]
+        segment_kinds[index : index + 2] = [output_prefix]
+
+    if len(segment_kinds) >= 2 and segment_kinds[:2] == ["title", "clip"]:
+        crossfade_pair(0, "intro")
+
+    if (
+        len(segment_kinds) >= 2
+        and segment_kinds[-1] == "final"
+        and segment_kinds[-2]
+        in {
+            "clip",
+            "intro",
+        }
+    ):
+        crossfade_pair(len(segment_kinds) - 2, "outro")
+
     if has_audio:
         segment_inputs = "".join(
             video + audio for video, audio in zip(video_labels, audio_labels, strict=True)
@@ -400,8 +462,9 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
         filters.append(f"{segment_inputs}concat=n={len(video_labels)}:v=1:a=1[outv][outa]")
     else:
         filters.append(f"{''.join(video_labels)}concat=n={len(video_labels)}:v=1:a=0[outv]")
+    filters.append("[outv]scale=in_range=auto:out_range=tv,format=yuv420p[compatv]")
 
-    command.extend(["-filter_complex", ";".join(filters), "-map", "[outv]"])
+    command.extend(["-filter_complex", ";".join(filters), "-map", "[compatv]"])
     if has_audio:
         command.extend(["-map", "[outa]", "-c:a", "aac", "-b:a", "192k"])
     else:
@@ -414,6 +477,14 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
             "medium",
             "-crf",
             "20",
+            "-profile:v",
+            "high",
+            "-level:v",
+            "4.1",
+            "-pix_fmt",
+            "yuv420p",
+            "-color_range",
+            "tv",
             "-r",
             frame_rate_ffmpeg,
             "-fps_mode",
@@ -427,12 +498,28 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
     )
     try:
         result = subprocess.run(
-            command, capture_output=True, text=True, encoding="utf-8", check=False
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
         )
     finally:
         for temporary_path in temporary_paths:
             temporary_path.unlink(missing_ok=True)
 
     if result.returncode:
-        lines = result.stderr.strip().splitlines()
-        raise RenderError(f"FFmpeg failed: {lines[-1] if lines else 'Unknown error'}")
+        error_log = output_path.with_suffix(".ffmpeg-error.log")
+        try:
+            error_log.write_text(result.stderr, encoding="utf-8")
+            log_note = f"\n\nFull log: {error_log}"
+        except OSError:
+            log_note = ""
+        lines = [
+            line
+            for line in result.stderr.strip().splitlines()
+            if line.strip() and line.strip() != "Conversion failed!"
+        ]
+        detail = "\n".join(lines[-8:]) if lines else "Unknown FFmpeg error"
+        raise RenderError(f"FFmpeg failed:\n{detail}{log_note}")
