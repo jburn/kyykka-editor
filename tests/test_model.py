@@ -16,21 +16,6 @@ def test_impacts_are_sorted_when_added() -> None:
     assert [impact.thrower for impact in project.impacts] == ["First", "Second"]
 
 
-def test_project_json_round_trip() -> None:
-    original = EditorProject(
-        video_path="match.mp4",
-        team_one_players=["Matti", "Maija"],
-        team_two_players=["Liisa"],
-        impacts=[Impact(1_234, "Matti")],
-    )
-    assert EditorProject.from_json(original.to_json()) == original
-
-
-def test_legacy_title_duration_is_ignored() -> None:
-    project = EditorProject.from_json('{"title_duration_ms": 9000, "impacts": []}')
-    assert project == EditorProject()
-
-
 def test_negative_impact_is_rejected() -> None:
     with pytest.raises(ValueError):
         Impact(-1)

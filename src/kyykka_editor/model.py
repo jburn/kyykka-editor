@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import json
 import re
 import unicodedata
-from dataclasses import asdict, dataclass, field
-from pathlib import Path
+from dataclasses import dataclass, field
 
 
 @dataclass(order=True, slots=True)
@@ -59,23 +57,6 @@ class EditorProject:
         if self.team_one_total > self.team_two_total:
             return self.team_one or "Team 1"
         return self.team_two or "Team 2"
-
-    def to_json(self) -> str:
-        return json.dumps(asdict(self), indent=2, ensure_ascii=False)
-
-    @classmethod
-    def from_json(cls, value: str) -> EditorProject:
-        raw = json.loads(value)
-        raw.pop("title_duration_ms", None)
-        raw["impacts"] = [Impact(**impact) for impact in raw.get("impacts", [])]
-        return cls(**raw)
-
-    def save(self, path: Path) -> None:
-        path.write_text(self.to_json() + "\n", encoding="utf-8")
-
-    @classmethod
-    def load(cls, path: Path) -> EditorProject:
-        return cls.from_json(path.read_text(encoding="utf-8"))
 
 
 def format_timestamp(milliseconds: int) -> str:

@@ -13,7 +13,6 @@ a compact highlight video around those moments.
 - Timeline events for the round-one result and final result/winner screens
 - Persistent bottom-left thrower-name overlay on each marked highlight
 - Match setup dialog for title, video, teams, scores, and player rosters
-- Saveable JSON project files
 - FFmpeg-based highlight rendering
 
 ## Requirements

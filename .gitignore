@@ -174,7 +174,6 @@ cython_debug/
 *.mkv
 *.avi
 *.m4v
-*.kyykka.json
 .venv/
 venv/
 .test-tmp/

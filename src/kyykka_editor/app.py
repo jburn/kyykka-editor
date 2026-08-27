@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Callable
+from copy import deepcopy
 from pathlib import Path
 
 os.environ.setdefault("QT_MEDIA_BACKEND", "ffmpeg")
@@ -54,11 +55,14 @@ class ProjectDialog(QDialog):
         self.title_edit = QLineEdit(project.title)
         self.team_one_edit = QLineEdit(project.team_one)
         self.team_two_edit = QLineEdit(project.team_two)
-        self.video_edit = QLineEdit(project.video_path)
+        self.video_path = project.video_path
+        self.video_label = QLabel()
+        self.video_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._refresh_video_label()
         browse = QPushButton("Browse…")
         browse.clicked.connect(self._browse_video)
         video_row = QHBoxLayout()
-        video_row.addWidget(self.video_edit, 1)
+        video_row.addWidget(self.video_label, 1)
         video_row.addWidget(browse)
         self.players_one = QPlainTextEdit("\n".join(project.team_one_players))
         self.players_two = QPlainTextEdit("\n".join(project.team_two_players))
@@ -110,11 +114,20 @@ class ProjectDialog(QDialog):
             self, "Open video", "", "Video files (*.mp4 *.mov *.mkv *.avi *.m4v);;All files (*)"
         )
         if filename:
-            self.video_edit.setText(filename)
+            self.video_path = filename
+            self._refresh_video_label()
+
+    def _refresh_video_label(self) -> None:
+        if self.video_path:
+            self.video_label.setText(Path(self.video_path).name)
+            self.video_label.setToolTip(self.video_path)
+        else:
+            self.video_label.setText("No video selected")
+            self.video_label.setToolTip("")
 
     def apply_to(self, project: EditorProject) -> None:
         project.title = self.title_edit.text().strip()
-        project.video_path = self.video_edit.text().strip()
+        project.video_path = self.video_path
         project.team_one = self.team_one_edit.text().strip()
         project.team_two = self.team_two_edit.text().strip()
         project.team_one_players = self._players(self.players_one)
@@ -194,7 +207,6 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.project = EditorProject()
-        self.project_path: Path | None = None
         self.mark_history: list[int] = []
         self.render_thread: RenderThread | None = None
         self.setWindowTitle("Kyykka Editor")
@@ -217,10 +229,8 @@ class MainWindow(QMainWindow):
         left, right = QVBoxLayout(), QVBoxLayout()
 
         source_row = QHBoxLayout()
-        self.open_video_button = QPushButton("Open video…")
         self.video_status = QLabel("No video selected")
         self.video_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        source_row.addWidget(self.open_video_button)
         source_row.addWidget(self.video_status, 1)
         left.addLayout(source_row)
         left.addWidget(self.video, 1)
@@ -250,22 +260,25 @@ class MainWindow(QMainWindow):
             controls.addWidget(button)
         left.addLayout(controls)
 
-        form = QFormLayout()
+        self.details_button = QPushButton("Match details…")
+        self.details_button.clicked.connect(self.edit_project_details)
+        right.addWidget(self.details_button)
+
+        timing_form = QFormLayout()
         self.pre_roll, self.post_roll = QSpinBox(), QSpinBox()
         for spin in (self.pre_roll, self.post_roll):
             spin.setRange(0, 30)
             spin.setSuffix(" s")
         self.pre_roll.setValue(4)
         self.post_roll.setValue(3)
+        timing_form.addRow("Before impact", self.pre_roll)
+        timing_form.addRow("After impact", self.post_roll)
+        right.addLayout(timing_form)
+
+        thrower_form = QFormLayout()
         self.thrower_combo = QComboBox()
-        self.thrower_combo.setEditable(True)
-        self.details_button = QPushButton("Match details…")
-        self.details_button.clicked.connect(self.edit_project_details)
-        form.addRow("Current thrower", self.thrower_combo)
-        form.addRow("Before impact", self.pre_roll)
-        form.addRow("After impact", self.post_roll)
-        form.addRow(self.details_button)
-        right.addLayout(form)
+        thrower_form.addRow("Current thrower", self.thrower_combo)
+        right.addLayout(thrower_form)
 
         event_row = QHBoxLayout()
         self.round_end_button = QPushButton("Mark round 1 end")
@@ -299,7 +312,6 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(root)
 
         self.play_button.clicked.connect(self.toggle_playback)
-        self.open_video_button.clicked.connect(self.open_video)
         self.back_button.clicked.connect(lambda: self.seek_relative(-3_000))
         self.forward_button.clicked.connect(lambda: self.seek_relative(5_000))
         self.mark_button.clicked.connect(self.mark_impact)
@@ -327,12 +339,8 @@ class MainWindow(QMainWindow):
     def _build_menu(self) -> None:
         menu = self.menuBar().addMenu("&File")
         for text, shortcut, callback in (
-            ("New project…", "Ctrl+N", self.new_project),
+            ("New match…", "Ctrl+N", self.new_project),
             ("Match details…", "Ctrl+D", self.edit_project_details),
-            ("Open video…", "Ctrl+O", self.open_video),
-            ("Open project…", "Ctrl+Shift+O", self.open_project),
-            ("Save project", "Ctrl+S", self.save_project),
-            ("Save project as…", "Ctrl+Shift+S", self.save_project_as),
         ):
             action = QAction(text, self)
             action.setShortcut(QKeySequence(shortcut))
@@ -347,7 +355,6 @@ class MainWindow(QMainWindow):
         dialog.apply_to(candidate)
         self.player.stop()
         self.project = candidate
-        self.project_path = None
         self.mark_history.clear()
         self._load_form()
 
@@ -376,13 +383,6 @@ class MainWindow(QMainWindow):
         )
         self.player.errorOccurred.connect(self._playback_error)
 
-    def open_video(self) -> None:
-        filename, _ = QFileDialog.getOpenFileName(
-            self, "Open video", "", "Video files (*.mp4 *.mov *.mkv *.avi *.m4v);;All files (*)"
-        )
-        if filename:
-            self._load_video(Path(filename))
-
     def _load_video(self, path: Path) -> None:
         path = path.resolve()
         if not path.is_file():
@@ -392,7 +392,6 @@ class MainWindow(QMainWindow):
         self.project.video_path = str(path)
         self.video_status.setText(f"Loading {path.name}…")
         self.video_status.setToolTip(str(path))
-        self.open_video_button.setEnabled(False)
         self.player.setSource(QUrl.fromLocalFile(str(path)))
         self.player.play()
         self.setWindowTitle(f"Kyykka Editor — {path.name}")
@@ -401,20 +400,15 @@ class MainWindow(QMainWindow):
         if status == QMediaPlayer.MediaStatus.LoadedMedia:
             name = Path(self.project.video_path).name
             self.video_status.setText(f"Loaded: {name}")
-            self.open_video_button.setEnabled(True)
         elif status == QMediaPlayer.MediaStatus.BufferedMedia:
             self.video_status.setText(f"Playing: {Path(self.project.video_path).name}")
-            self.open_video_button.setEnabled(True)
         elif status == QMediaPlayer.MediaStatus.EndOfMedia:
             self.video_status.setText(f"Loaded: {Path(self.project.video_path).name}")
-            self.open_video_button.setEnabled(True)
         elif status == QMediaPlayer.MediaStatus.InvalidMedia:
             self.video_status.setText("Could not load video")
-            self.open_video_button.setEnabled(True)
 
     def _playback_error(self, _error: QMediaPlayer.Error, message: str) -> None:
         self.video_status.setText("Could not load video")
-        self.open_video_button.setEnabled(True)
         detail = message or "Qt could not decode this video file."
         QMessageBox.warning(self, "Playback error", f"{detail}\n\nFile: {self.project.video_path}")
 
@@ -526,39 +520,6 @@ class MainWindow(QMainWindow):
         if self.project.video_path:
             self._load_video(Path(self.project.video_path))
 
-    def open_project(self) -> None:
-        filename, _ = QFileDialog.getOpenFileName(
-            self, "Open project", "", "Kyykka project (*.json)"
-        )
-        if not filename:
-            return
-        try:
-            self.project = EditorProject.load(Path(filename))
-        except (OSError, ValueError, TypeError) as error:
-            QMessageBox.critical(self, "Cannot open project", str(error))
-            return
-        self.project_path = Path(filename)
-        self.mark_history.clear()
-        self._load_form()
-
-    def save_project(self) -> None:
-        if self.project_path is None:
-            self.save_project_as()
-            return
-        self._sync_form()
-        try:
-            self.project.save(self.project_path)
-        except OSError as error:
-            QMessageBox.critical(self, "Cannot save project", str(error))
-
-    def save_project_as(self) -> None:
-        filename, _ = QFileDialog.getSaveFileName(
-            self, "Save project", "match.json", "Kyykka project (*.json)"
-        )
-        if filename:
-            self.project_path = Path(filename)
-            self.save_project()
-
     def export_video(self) -> None:
         self._sync_form()
         if not self.project.impacts:
@@ -583,7 +544,7 @@ class MainWindow(QMainWindow):
         self.export_status.setText("Rendering video. This can take several minutes…")
         self.export_status.show()
         self.statusBar().showMessage("Rendering highlights…")
-        snapshot = EditorProject.from_json(self.project.to_json())
+        snapshot = deepcopy(self.project)
         self.render_thread = RenderThread(snapshot, Path(filename), self.player.duration())
         self.render_thread.succeeded.connect(self._export_succeeded)
         self.render_thread.failed.connect(self._export_failed)
