@@ -47,6 +47,28 @@ Integration tests generate a small video, render a complete highlight with the
 real FFmpeg executable, and inspect the result with FFprobe. They require both
 programs on `PATH`. The same checks run on Windows in GitHub Actions.
 
+## Build a distributable Windows application
+
+Install the development dependencies and run the packaging script:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+.\packaging\build.ps1
+```
+
+The script discovers `ffmpeg.exe` and `ffprobe.exe` from `PATH` and creates
+`dist\KyykkaEditor`. You can select a particular FFmpeg distribution instead:
+
+```powershell
+.\packaging\build.ps1 -FFmpegBin C:\ffmpeg\bin
+```
+
+Share the complete `dist\KyykkaEditor` directory, not just `KyykkaEditor.exe`.
+The application uses its bundled FFmpeg tools and only falls back to `PATH` in a
+development installation. Review [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+before distributing the package.
+
 ## Controls
 
 | Action | Button | Shortcut |

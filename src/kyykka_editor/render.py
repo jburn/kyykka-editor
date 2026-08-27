@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 import uuid
 from fractions import Fraction
 from pathlib import Path
@@ -22,10 +23,29 @@ class RenderError(RuntimeError):
     pass
 
 
+def _media_subprocess_options() -> dict[str, int]:
+    """Prevent console-based media tools from opening windows in the GUI app."""
+    if sys.platform == "win32":
+        return {"creationflags": subprocess.CREATE_NO_WINDOW}
+    return {}
+
+
+def find_media_tool(name: str) -> str | None:
+    """Find a bundled FFmpeg tool, falling back to the development PATH."""
+    package_bin = Path(__file__).resolve().parent / "bin"
+    candidates = [package_bin / name]
+    if not name.casefold().endswith(".exe"):
+        candidates.insert(0, package_bin / f"{name}.exe")
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    return shutil.which(name)
+
+
 def _probe(video_path: str, entries: str, stream: str) -> subprocess.CompletedProcess[str]:
-    ffprobe = shutil.which("ffprobe")
+    ffprobe = find_media_tool("ffprobe")
     if not ffprobe:
-        raise RenderError("FFprobe was not found on PATH")
+        raise RenderError("FFprobe was not found in the application bundle or on PATH")
     return subprocess.run(
         [
             ffprobe,
@@ -43,6 +63,7 @@ def _probe(video_path: str, entries: str, stream: str) -> subprocess.CompletedPr
         text=True,
         encoding="utf-8",
         check=False,
+        **_media_subprocess_options(),
     )
 
 
@@ -234,9 +255,9 @@ def build_intervals(project: EditorProject, duration_ms: int) -> list[tuple[floa
 
 def render_highlights(project: EditorProject, output_path: Path, duration_ms: int) -> None:
     """Render a title card followed by all marked highlight intervals."""
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg = find_media_tool("ffmpeg")
     if not ffmpeg:
-        raise RenderError("FFmpeg was not found on PATH")
+        raise RenderError("FFmpeg was not found in the application bundle or on PATH")
     if not project.video_path:
         raise RenderError("No source video is selected")
     if Path(project.video_path).resolve() == output_path.resolve():
@@ -511,6 +532,7 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
             encoding="utf-8",
             errors="replace",
             check=False,
+            **_media_subprocess_options(),
         )
     finally:
         for temporary_path in temporary_paths:

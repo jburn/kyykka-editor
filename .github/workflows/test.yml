@@ -18,3 +18,17 @@ jobs:
       - run: ruff check .
       - run: pytest -m "not integration" --cov=kyykka_editor --cov-report=term-missing --cov-fail-under=70
       - run: pytest -m integration
+      - run: powershell -File packaging/build.ps1
+      - name: Verify packaged tools
+        shell: pwsh
+        run: |
+          $required = @(
+            "dist/KyykkaEditor/KyykkaEditor.exe",
+            "dist/KyykkaEditor/_internal/kyykka_editor/bin/ffmpeg.exe",
+            "dist/KyykkaEditor/_internal/kyykka_editor/bin/ffprobe.exe"
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Missing packaged file: $path"
+            }
+          }

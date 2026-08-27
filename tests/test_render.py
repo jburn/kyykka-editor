@@ -7,6 +7,7 @@ import pytest
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
+import kyykka_editor.render as render_module
 from kyykka_editor.model import EditorProject, Impact
 from kyykka_editor.render import (
     RenderError,
@@ -14,6 +15,7 @@ from kyykka_editor.render import (
     create_score_card,
     create_thrower_overlay,
     create_title_card,
+    find_media_tool,
     render_highlights,
     source_dimensions,
     source_frame_rate,
@@ -32,6 +34,39 @@ def test_intervals_are_clamped_and_overlaps_are_merged() -> None:
 
 def test_no_impacts_produces_no_intervals() -> None:
     assert build_intervals(EditorProject(), 10_000) == []
+
+
+def test_media_tool_prefers_bundled_executable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    package = tmp_path / "kyykka_editor"
+    bundled = package / "bin" / "ffmpeg.exe"
+    bundled.parent.mkdir(parents=True)
+    bundled.touch()
+    monkeypatch.setattr(render_module, "__file__", str(package / "render.py"))
+    monkeypatch.setattr(render_module.shutil, "which", lambda _name: "path/ffmpeg.exe")
+    assert find_media_tool("ffmpeg") == str(bundled)
+
+
+def test_media_tool_falls_back_to_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(render_module.shutil, "which", lambda name: f"path/{name}.exe")
+    assert find_media_tool("ffprobe") == "path/ffprobe.exe"
+
+
+def test_media_tools_do_not_open_console_windows_on_windows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(render_module.sys, "platform", "win32")
+    assert render_module._media_subprocess_options() == {
+        "creationflags": subprocess.CREATE_NO_WINDOW
+    }
+
+
+def test_media_subprocess_has_no_platform_flags_elsewhere(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(render_module.sys, "platform", "linux")
+    assert render_module._media_subprocess_options() == {}
 
 
 def test_rendered_cards_and_overlay_are_valid_images(qapp: QApplication, tmp_path: Path) -> None:
@@ -145,6 +180,7 @@ def test_render_command_preserves_rate_and_requests_windows_compatible_video(
         post_roll_ms=1_000,
     )
     captured: list[str] = []
+    captured_options: dict[str, object] = {}
 
     monkeypatch.setattr("kyykka_editor.render.shutil.which", lambda name: name)
     monkeypatch.setattr("kyykka_editor.render.source_has_audio", lambda _path: True)
@@ -166,6 +202,7 @@ def test_render_command_preserves_rate_and_requests_windows_compatible_video(
 
     def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         captured.extend(command)
+        captured_options.update(_kwargs)
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr("kyykka_editor.render.subprocess.run", fake_run)
@@ -183,6 +220,7 @@ def test_render_command_preserves_rate_and_requests_windows_compatible_video(
     assert "-color_range tv" in command
     assert "-r 60000/1001" in command
     assert "-fps_mode cfr" in command
+    assert captured_options["creationflags"] == subprocess.CREATE_NO_WINDOW
     assert not list(tmp_path.glob(".kyykka-*.png"))
 
 
