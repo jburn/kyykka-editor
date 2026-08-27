@@ -121,7 +121,7 @@ def create_score_card(
 ) -> None:
     width, height = size
     image = QImage(width, height, QImage.Format.Format_RGB32)
-    image.fill(QColor("#12213a"))
+    image.fill(QColor("#2a76bc"))
     painter = QPainter(image)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setPen(QColor("white"))

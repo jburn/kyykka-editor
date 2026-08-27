@@ -12,7 +12,7 @@ os.environ.setdefault("QT_FFMPEG_DEBUG", "0")
 os.environ.setdefault("QT_LOGGING_RULES", "qt.multimedia.ffmpeg.*=false")
 
 from PySide6.QtCore import QStandardPaths, Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QAction, QKeySequence, QMouseEvent
+from PySide6.QtGui import QAction, QIcon, QKeySequence, QMouseEvent
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -44,6 +44,8 @@ from PySide6.QtWidgets import (
 
 from .model import EditorProject, default_export_filename, format_timestamp
 from .render import RenderError, render_highlights
+
+ICON_PATH = Path(__file__).with_name("assets") / "kyykka-editor.png"
 
 
 class ProjectDialog(QDialog):
@@ -209,7 +211,8 @@ class MainWindow(QMainWindow):
         self.project = EditorProject()
         self.mark_history: list[int] = []
         self.render_thread: RenderThread | None = None
-        self.setWindowTitle("Kyykka Editor")
+        self.setWindowTitle("Kyykkä Editor")
+        self.setWindowIcon(QIcon(str(ICON_PATH)))
         self.resize(1180, 780)
 
         self.player = QMediaPlayer(self)
@@ -394,7 +397,7 @@ class MainWindow(QMainWindow):
         self.video_status.setToolTip(str(path))
         self.player.setSource(QUrl.fromLocalFile(str(path)))
         self.player.play()
-        self.setWindowTitle(f"Kyykka Editor — {path.name}")
+        self.setWindowTitle(f"Kyykkä Editor — {path.name}")
 
     def _media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
         if status == QMediaPlayer.MediaStatus.LoadedMedia:
@@ -567,8 +570,13 @@ class MainWindow(QMainWindow):
 
 
 def main() -> int:
+    if sys.platform == "win32":
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("OAMK.KyykkaEditor")
     app = QApplication(sys.argv)
     app.setApplicationName("Kyykka Editor")
+    app.setWindowIcon(QIcon(str(ICON_PATH)))
     window = MainWindow()
     window.show()
     QTimer.singleShot(0, window.new_project)

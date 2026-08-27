@@ -19,6 +19,9 @@ kyykka-editor = "kyykka_editor.app:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+kyykka_editor = ["assets/*.png", "assets/*.ico"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 
