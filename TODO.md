@@ -1,0 +1,2 @@
+- Add end user instructions behind top bar menu
+- Make team member insertion boxes smaller (8 or so rows)
