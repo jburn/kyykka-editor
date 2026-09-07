@@ -9,6 +9,8 @@ a compact highlight video around those moments.
 
 ![Match details](docs/screenshots/match-details.png)
 
+![Export](docs/screenshots/export.png)
+
 ## Features
 
 - Integrated video playback and scrubbing
