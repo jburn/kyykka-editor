@@ -124,8 +124,13 @@ class ProjectDialog(QDialog):
         video_row.addWidget(browse)
         self.players_one = QPlainTextEdit("\n".join(project.team_one_players))
         self.players_two = QPlainTextEdit("\n".join(project.team_two_players))
-        self.players_one.setPlaceholderText("One player per line")
-        self.players_two.setPlaceholderText("One player per line")
+        for players in (self.players_one, self.players_two):
+            players.setPlaceholderText("One player per line")
+            players.setFixedHeight(
+                6 * players.fontMetrics().lineSpacing()
+                + 2 * players.frameWidth()
+                + round(2 * players.document().documentMargin())
+            )
         self.scores = [QSpinBox() for _ in range(4)]
         values = (
             project.team_one_round_one_score,
@@ -361,16 +366,23 @@ class MainWindow(QMainWindow):
         self.details_button.clicked.connect(self.edit_project_details)
         right.addWidget(self.details_button)
 
-        timing_form = QFormLayout()
+        timing_row = QHBoxLayout()
         self.pre_roll, self.post_roll = QSpinBox(), QSpinBox()
         for spin in (self.pre_roll, self.post_roll):
             spin.setRange(0, 30)
             spin.setSuffix(" s")
         self.pre_roll.setValue(4)
         self.post_roll.setValue(3)
-        timing_form.addRow("Before impact", self.pre_roll)
-        timing_form.addRow("After impact", self.post_roll)
-        right.addLayout(timing_form)
+        before_label = QLabel("Before impact")
+        before_label.setBuddy(self.pre_roll)
+        after_label = QLabel("After impact")
+        after_label.setBuddy(self.post_roll)
+        timing_row.addWidget(before_label)
+        timing_row.addWidget(self.pre_roll)
+        timing_row.addSpacing(12)
+        timing_row.addWidget(after_label)
+        timing_row.addWidget(self.post_roll)
+        right.addLayout(timing_row)
 
         thrower_form = QFormLayout()
         self.thrower_combo = QComboBox()
