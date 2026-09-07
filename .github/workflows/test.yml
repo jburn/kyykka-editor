@@ -63,6 +63,7 @@ jobs:
             "dist/KyykkaEditor/KyykkaEditor.exe",
             "dist/KyykkaEditor/_internal/kyykka_editor/bin/ffmpeg.exe",
             "dist/KyykkaEditor/_internal/kyykka_editor/bin/ffprobe.exe",
+            "dist/KyykkaEditor/_internal/kyykka_editor/translations/qtbase_fi.qm",
             "dist/KyykkaEditor/LICENSE",
             "dist/KyykkaEditor/THIRD_PARTY_NOTICES.md"
           )

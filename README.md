@@ -111,6 +111,12 @@ contain separately licensed components; see
 
 ## Controls
 
+Choose **Help → Language → Suomi** for Finnish, or **Ohje → Kieli → English**
+to switch back. The interface updates immediately and remembers the selection
+for the next launch. English is the default. Match titles, team/player names,
+marks, and playback position are preserved when switching languages.
+Exported result screens use the selected language too.
+
 Open **Help → Hotkeys** to see all editor shortcuts.
 
 | Action | Control | Shortcut |

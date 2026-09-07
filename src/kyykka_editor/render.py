@@ -13,6 +13,7 @@ from threading import Event
 from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen
 
+from .i18n import tr
 from .model import EditorProject, Impact
 
 TITLE_DURATION_MS = 4_000
@@ -77,7 +78,7 @@ def find_media_tool(name: str) -> str | None:
 def _probe(video_path: str, entries: str, stream: str) -> subprocess.CompletedProcess[str]:
     ffprobe = find_media_tool("ffprobe")
     if not ffprobe:
-        raise RenderError("FFprobe was not found in the application bundle or on PATH")
+        raise RenderError(tr("FFprobe was not found in the application bundle or on PATH"))
     return subprocess.run(
         [
             ffprobe,
@@ -114,7 +115,7 @@ def source_dimensions(video_path: str) -> tuple[int, int]:
         stream = json.loads(result.stdout)["streams"][0]
         return int(stream["width"]), int(stream["height"])
     except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as error:
-        raise RenderError("Could not determine the source video's dimensions") from error
+        raise RenderError(tr("Could not determine the source video's dimensions")) from error
 
 
 def source_frame_rate(video_path: str) -> Fraction:
@@ -141,7 +142,7 @@ def source_frame_rate(video_path: str) -> Fraction:
         ZeroDivisionError,
         json.JSONDecodeError,
     ) as error:
-        raise RenderError("Could not determine the source video's frame rate") from error
+        raise RenderError(tr("Could not determine the source video's frame rate")) from error
 
 
 def create_title_card(project: EditorProject, path: Path, size: tuple[int, int]) -> None:
@@ -174,7 +175,7 @@ def create_title_card(project: EditorProject, path: Path, size: tuple[int, int])
         )
     painter.end()
     if not image.save(str(path), "PNG"):
-        raise RenderError("Could not create the title screen image")
+        raise RenderError(tr("Could not create the title screen image"))
 
 
 def create_score_card(
@@ -189,7 +190,7 @@ def create_score_card(
     painter = QPainter(image)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setPen(QColor("white"))
-    heading = "Lopputulos" if final else "1. puolen tulos"
+    heading = tr("Final result") if final else tr("Round 1 result")
     one_score = project.team_one_total if final else project.team_one_round_one_score
     two_score = project.team_two_total if final else project.team_two_round_one_score
 
@@ -200,8 +201,11 @@ def create_score_card(
         heading,
     )
     team_font_size = max(24, height // 17)
-    team_one_name = project.team_one or "Joukkue 1"
-    team_two_name = project.team_two or "Joukkue 2"
+    team_one_name = project.team_one or tr("Team 1")
+    team_two_name = project.team_two or tr("Team 2")
+    winner_name = (
+        team_one_name if one_score > two_score else team_two_name if two_score > one_score else None
+    )
     name_score_gap = max(14, width // 80)
     center_gap = max(48, width // 9)
     score_padding = max(16, width // 100)
@@ -210,7 +214,7 @@ def create_score_card(
         font = QFont("Arial", team_font_size)
         if not final:
             font.setBold(True)
-        elif project.winner == name:
+        elif winner_name == name:
             font.setBold(True)
             font.setUnderline(True)
         return font
@@ -275,7 +279,7 @@ def create_score_card(
     )
     painter.end()
     if not image.save(str(path), "PNG"):
-        raise RenderError("Could not create the score screen image")
+        raise RenderError(tr("Could not create the score screen image"))
 
 
 def create_thrower_overlay(name: str, path: Path, size: tuple[int, int]) -> None:
@@ -299,7 +303,7 @@ def create_thrower_overlay(name: str, path: Path, size: tuple[int, int]) -> None
     painter.drawText(box, Qt.AlignmentFlag.AlignCenter, name)
     painter.end()
     if not image.save(str(path), "PNG"):
-        raise RenderError("Could not create the thrower overlay")
+        raise RenderError(tr("Could not create the thrower overlay"))
 
 
 def build_intervals(project: EditorProject, duration_ms: int) -> list[tuple[float, float]]:
@@ -381,7 +385,7 @@ def render_highlights(
     if cancel.is_set():
         raise RenderCancelled()
     if Path(project.video_path).resolve() == output_path.resolve():
-        raise RenderError("The export file must be different from the source video")
+        raise RenderError(tr("The export file must be different from the source video"))
     # Publish only complete videos, preserving any previous export on cancellation.
     with TemporaryDirectory(prefix=".kyykka-render-", dir=output_path.parent) as directory:
         staged_output = Path(directory) / output_path.name
@@ -393,7 +397,11 @@ def render_highlights(
                 destination = output_path.with_suffix(".ffmpeg-error.log")
                 log.replace(destination)
                 raise RenderError(
-                    f"FFmpeg failed. Full log: {destination}\n{destination.read_text(encoding='utf-8')[-2000:]}"
+                    tr(
+                        "FFmpeg failed. Full log: {path}\n{detail}",
+                        path=destination,
+                        detail=destination.read_text(encoding="utf-8")[-2000:],
+                    )
                 ) from None
             raise
         if cancel.is_set():
@@ -407,24 +415,24 @@ def _render_highlights(
     """Render a title card followed by all marked highlight intervals."""
     ffmpeg = find_media_tool("ffmpeg")
     if not ffmpeg:
-        raise RenderError("FFmpeg was not found in the application bundle or on PATH")
+        raise RenderError(tr("FFmpeg was not found in the application bundle or on PATH"))
     if not project.video_path:
-        raise RenderError("No source video is selected")
+        raise RenderError(tr("No source video is selected"))
     if Path(project.video_path).resolve() == output_path.resolve():
-        raise RenderError("The export file must be different from the source video")
+        raise RenderError(tr("The export file must be different from the source video"))
     if (
         project.round_one_end_ms is not None
         and project.game_end_ms is not None
         and project.game_end_ms < project.round_one_end_ms
     ):
-        raise RenderError("The game-end marker must be after the round-one marker")
+        raise RenderError(tr("The game-end marker must be after the round-one marker"))
     included_impacts = [
         impact
         for impact in project.impacts
         if project.game_end_ms is None or impact.timestamp_ms <= project.game_end_ms
     ]
     if not included_impacts:
-        raise RenderError("Mark at least one impact before exporting")
+        raise RenderError(tr("Mark at least one impact before exporting"))
     if project.round_one_end_ms is None:
         impact_groups = [included_impacts]
     else:
@@ -677,7 +685,7 @@ def _render_highlights(
         error_log = output_path.with_suffix(".ffmpeg-error.log")
         try:
             error_log.write_text(result.stderr, encoding="utf-8")
-            log_note = f"\n\nFull log: {error_log}"
+            log_note = tr("\n\nFull log: {path}", path=error_log)
         except OSError:
             log_note = ""
         lines = [
@@ -685,5 +693,7 @@ def _render_highlights(
             for line in result.stderr.strip().splitlines()
             if line.strip() and line.strip() != "Conversion failed!"
         ]
-        detail = "\n".join(lines[-8:]) if lines else "Unknown FFmpeg error"
-        raise RenderError(f"FFmpeg failed:\n{detail}{log_note}")
+        detail = "\n".join(lines[-8:]) if lines else tr("Unknown FFmpeg error")
+        raise RenderError(
+            tr("FFmpeg failed:\n{detail}{log_note}", detail=detail, log_note=log_note)
+        )

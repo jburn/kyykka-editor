@@ -1,2 +1,0 @@
-- revise UI layout
-- Add finnish language support + language configuration

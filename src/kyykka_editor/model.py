@@ -4,6 +4,8 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
+from .i18n import tr
+
 
 @dataclass(order=True, slots=True)
 class Impact:
@@ -67,7 +69,7 @@ def format_timestamp(milliseconds: int) -> str:
 
 
 def default_export_filename(project: EditorProject) -> str:
-    title = project.title.strip() or "Kyykka highlights"
+    title = project.title.strip() or tr("Kyykka highlights")
     teams = [name.strip() for name in (project.team_one, project.team_two) if name.strip()]
     if teams and not all(name.casefold() in title.casefold() for name in teams):
         title = f"{title} - {' vs. '.join(teams)}"

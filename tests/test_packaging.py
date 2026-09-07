@@ -15,6 +15,8 @@ def test_packaging_configuration_contains_required_runtime_files() -> None:
     assert '"THIRD_PARTY_NOTICES.md"' in spec
     assert "console=False" in spec
     assert "kyykka-editor.ico" in spec
+    assert "qtbase_fi.qm" in spec
+    assert '"kyykka_editor/translations"' in spec
 
 
 def test_build_script_validates_complete_output() -> None:

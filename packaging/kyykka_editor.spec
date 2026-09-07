@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+from PySide6.QtCore import QLibraryInfo
 
 
 spec_location = Path(SPECPATH).resolve()
@@ -17,6 +18,8 @@ a = Analysis(
     pathex=[str(project_root / "src")],
     binaries=[(str(path), "kyykka_editor/bin") for path in required_tools],
     datas=[
+        (str(Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)) / "qtbase_fi.qm"),
+         "kyykka_editor/translations"),
         (str(project_root / "src/kyykka_editor/assets"), "kyykka_editor/assets"),
         (str(project_root / "LICENSE"), "."),
         (str(project_root / "THIRD_PARTY_NOTICES.md"), "."),

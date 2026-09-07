@@ -16,6 +16,7 @@ os.environ.setdefault("QT_LOGGING_RULES", "qt.multimedia.ffmpeg.*=false")
 from PySide6.QtCore import QRectF, QSizeF, QStandardPaths, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QAction,
+    QActionGroup,
     QBrush,
     QCloseEvent,
     QColor,
@@ -62,6 +63,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import __version__
+from .i18n import LANGUAGES, language, saved_language, set_language, tr
 from .model import EditorProject, default_export_filename, format_timestamp
 from .render import RenderCancelled, RenderError, estimate_export, render_highlights
 
@@ -72,7 +74,7 @@ PROJECT_URL = "https://github.com/jburn/kyykka-editor"
 class AboutDialog(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("About Kyykkä Editor")
+        self.setWindowTitle(tr("About Kyykkä Editor"))
         self.setWindowIcon(QIcon(str(ICON_PATH)))
         self.setMinimumSize(540, 440)
         layout = QVBoxLayout(self)
@@ -83,37 +85,44 @@ class AboutDialog(QDialog):
         layout.addWidget(icon)
 
         build_kind = (
-            "Packaged Windows application" if getattr(sys, "frozen", False) else "Development build"
+            tr("Packaged Windows application")
+            if getattr(sys, "frozen", False)
+            else tr("Development build")
         )
         self.version_label = QLabel(
-            f"<h2>Kyykkä Editor</h2>"
-            f"<p><b>Version:</b> {__version__}<br><b>Build:</b> {build_kind}</p>"
+            tr(
+                "<h2>Kyykkä Editor</h2><p><b>Version:</b> {version}<br><b>Build:</b> {build}</p>",
+                version=__version__,
+                build=build_kind,
+            )
         )
         self.version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.version_label)
 
         self.contact_label = QLabel(
-            f'<p><b>Contact and project:</b> <a href="{PROJECT_URL}">{PROJECT_URL}</a></p>'
+            tr('<p><b>Contact and project:</b> <a href="{url}">{url}</a></p>', url=PROJECT_URL)
         )
         self.contact_label.setOpenExternalLinks(True)
         self.contact_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         layout.addWidget(self.contact_label)
 
-        layout.addWidget(QLabel("License information"))
+        layout.addWidget(QLabel(tr("License information")))
         self.license_text = QPlainTextEdit()
         self.license_text.setReadOnly(True)
         self.license_text.setPlainText(
-            "Kyykkä Editor\n"
-            "Copyright © 2026 jburn and contributors.\n"
-            "Licensed under the GNU General Public License, version 3 or later "
-            "(GPL-3.0-or-later). You may use, study, share, and modify the application "
-            "under those terms. There is no warranty. See LICENSE in the application "
-            "directory for the complete license.\n\n"
-            "FFmpeg and FFprobe\n"
-            "The packaged Gyan full build is GPL-enabled. The exact obligations depend on "
-            "the included build. See THIRD_PARTY_NOTICES.md in the application directory.\n\n"
-            "PySide6 / Qt for Python\n"
-            "Available under LGPLv3, GPLv3, and commercial licensing terms."
+            tr(
+                "Kyykkä Editor\n"
+                "Copyright © 2026 jburn and contributors.\n"
+                "Licensed under the GNU General Public License, version 3 or later "
+                "(GPL-3.0-or-later). You may use, study, share, and modify the application "
+                "under those terms. There is no warranty. See LICENSE in the application "
+                "directory for the complete license.\n\n"
+                "FFmpeg and FFprobe\n"
+                "The packaged Gyan full build is GPL-enabled. The exact obligations depend on "
+                "the included build. See THIRD_PARTY_NOTICES.md in the application directory.\n\n"
+                "PySide6 / Qt for Python\n"
+                "Available under LGPLv3, GPLv3, and commercial licensing terms."
+            )
         )
         layout.addWidget(self.license_text, 1)
 
@@ -125,7 +134,7 @@ class AboutDialog(QDialog):
 class ProjectDialog(QDialog):
     def __init__(self, project: EditorProject, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Match details")
+        self.setWindowTitle(tr("Match details"))
         self.setMinimumWidth(560)
         form = QFormLayout(self)
         self.title_edit = QLineEdit(project.title)
@@ -135,7 +144,7 @@ class ProjectDialog(QDialog):
         self.video_label = QLabel()
         self.video_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self._refresh_video_label()
-        browse = QPushButton("Browse…")
+        browse = QPushButton(tr("Browse…"))
         browse.clicked.connect(self._browse_video)
         video_row = QHBoxLayout()
         video_row.addWidget(self.video_label, 1)
@@ -143,7 +152,7 @@ class ProjectDialog(QDialog):
         self.players_one = QPlainTextEdit("\n".join(project.team_one_players))
         self.players_two = QPlainTextEdit("\n".join(project.team_two_players))
         for players in (self.players_one, self.players_two):
-            players.setPlaceholderText("One player per line")
+            players.setPlaceholderText(tr("One player per line"))
             players.setFixedHeight(
                 6 * players.fontMetrics().lineSpacing()
                 + 2 * players.frameWidth()
@@ -159,22 +168,22 @@ class ProjectDialog(QDialog):
         for score, value in zip(self.scores, values, strict=True):
             score.setRange(-100, 100)
             score.setValue(value)
-        form.addRow("Match title", self.title_edit)
-        form.addRow("Video", video_row)
-        form.addRow("Team 1", self.team_one_edit)
-        form.addRow("Team 1 players", self.players_one)
-        form.addRow("Team 2", self.team_two_edit)
-        form.addRow("Team 2 players", self.players_two)
+        form.addRow(tr("Match title"), self.title_edit)
+        form.addRow(tr("Video"), video_row)
+        form.addRow(tr("Team 1"), self.team_one_edit)
+        form.addRow(tr("Team 1 players"), self.players_one)
+        form.addRow(tr("Team 2"), self.team_two_edit)
+        form.addRow(tr("Team 2 players"), self.players_two)
         score_grid = QGridLayout()
-        score_grid.addWidget(QLabel("Round 1"), 0, 1)
-        score_grid.addWidget(QLabel("Round 2"), 0, 2)
-        self.score_team_one = QLabel(project.team_one or "Team 1")
-        self.score_team_two = QLabel(project.team_two or "Team 2")
+        score_grid.addWidget(QLabel(tr("Round 1")), 0, 1)
+        score_grid.addWidget(QLabel(tr("Round 2")), 0, 2)
+        self.score_team_one = QLabel(project.team_one or tr("Team 1"))
+        self.score_team_two = QLabel(project.team_two or tr("Team 2"))
         self.team_one_edit.textChanged.connect(
-            lambda name: self.score_team_one.setText(name.strip() or "Team 1")
+            lambda name: self.score_team_one.setText(name.strip() or tr("Team 1"))
         )
         self.team_two_edit.textChanged.connect(
-            lambda name: self.score_team_two.setText(name.strip() or "Team 2")
+            lambda name: self.score_team_two.setText(name.strip() or tr("Team 2"))
         )
         score_grid.addWidget(self.score_team_one, 1, 0)
         score_grid.addWidget(self.scores[0], 1, 1)
@@ -182,7 +191,7 @@ class ProjectDialog(QDialog):
         score_grid.addWidget(self.score_team_two, 2, 0)
         score_grid.addWidget(self.scores[1], 2, 1)
         score_grid.addWidget(self.scores[3], 2, 2)
-        form.addRow("Scores", score_grid)
+        form.addRow(tr("Scores"), score_grid)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
@@ -192,7 +201,11 @@ class ProjectDialog(QDialog):
 
     def _browse_video(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Open video", "", "Video files (*.mp4 *.mov *.mkv *.avi *.m4v);;All files (*)"
+            self,
+            tr("Open video"),
+            "",
+            tr("Video files (*.mp4 *.mov *.mkv *.avi *.m4v);;All files (*)"),
+            options=QFileDialog.Option.DontUseNativeDialog,
         )
         if filename:
             self.video_path = filename
@@ -203,7 +216,7 @@ class ProjectDialog(QDialog):
             self.video_label.setText(Path(self.video_path).name)
             self.video_label.setToolTip(self.video_path)
         else:
-            self.video_label.setText("No video selected")
+            self.video_label.setText(tr("No video selected"))
             self.video_label.setToolTip("")
 
     def apply_to(self, project: EditorProject) -> None:
@@ -270,23 +283,23 @@ class RenderDialog(QDialog):
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Rendering highlights")
+        self.setWindowTitle(tr("Rendering highlights"))
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.setMinimumWidth(380)
         layout = QVBoxLayout(self)
-        self.status = QLabel("Rendering video. This can take several minutes…")
+        self.status = QLabel(tr("Rendering video. This can take several minutes…"))
         layout.addWidget(self.status)
         self.progress = QProgressBar()
         self.progress.setRange(0, 0)
         layout.addWidget(self.progress)
-        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button = QPushButton(tr("Cancel"))
         self.cancel_button.clicked.connect(self.reject)
         layout.addWidget(self.cancel_button)
 
     def reject(self) -> None:
         if self.cancel_button.isEnabled():
             self.cancel_button.setEnabled(False)
-            self.status.setText("Cancelling render…")
+            self.status.setText(tr("Cancelling render…"))
             self.cancel_requested.emit()
 
     def closeEvent(self, event: QCloseEvent) -> None:
@@ -417,7 +430,7 @@ class MainWindow(QMainWindow):
         left, right = QVBoxLayout(), QVBoxLayout()
 
         source_row = QHBoxLayout()
-        self.video_status = QLabel("No video selected")
+        self.video_status = QLabel(tr("No video selected"))
         self.video_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         source_row.addWidget(self.video_status, 1)
         left.addLayout(source_row)
@@ -433,10 +446,10 @@ class MainWindow(QMainWindow):
 
         controls = QHBoxLayout()
         self.back_button = QPushButton("−3 s")
-        self.play_button = QPushButton("Play")
+        self.play_button = QPushButton(tr("Play"))
         self.forward_button = QPushButton("+5 s")
-        self.mark_button = QPushButton("Mark impact")
-        self.undo_button = QPushButton("Undo")
+        self.mark_button = QPushButton(tr("Mark impact"))
+        self.undo_button = QPushButton(tr("Undo"))
         self.mark_button.setDefault(True)
         for button in (
             self.back_button,
@@ -448,7 +461,7 @@ class MainWindow(QMainWindow):
             controls.addWidget(button)
         left.addLayout(controls)
 
-        self.details_button = QPushButton("Match details…")
+        self.details_button = QPushButton(tr("Match details…"))
         self.details_button.clicked.connect(self.edit_project_details)
         right.addWidget(self.details_button)
 
@@ -459,9 +472,9 @@ class MainWindow(QMainWindow):
             spin.setSuffix(" s")
         self.pre_roll.setValue(4)
         self.post_roll.setValue(3)
-        before_label = QLabel("Before impact")
+        self.before_label = before_label = QLabel(tr("Before impact"))
         before_label.setBuddy(self.pre_roll)
-        after_label = QLabel("After impact")
+        self.after_label = after_label = QLabel(tr("After impact"))
         after_label.setBuddy(self.post_roll)
         timing_row.addWidget(before_label)
         timing_row.addWidget(self.pre_roll)
@@ -476,40 +489,44 @@ class MainWindow(QMainWindow):
         thrower_field = QVBoxLayout()
         thrower_field.setSpacing(2)
         thrower_field.addWidget(self.thrower_combo)
-        self.thrower_shortcut_hint = QLabel(",=next  .=previous")
+        self.thrower_shortcut_hint = QLabel(tr(",=next  .=previous"))
         hint_font = self.thrower_shortcut_hint.font()
         hint_font.setPointSizeF(max(8.0, hint_font.pointSizeF() - 1.0))
         self.thrower_shortcut_hint.setFont(hint_font)
         self.thrower_shortcut_hint.setStyleSheet("color: palette(placeholder-text);")
         thrower_field.addWidget(self.thrower_shortcut_hint)
-        thrower_form.addRow("Current thrower", thrower_field)
+        self.thrower_label = QLabel(tr("Current thrower"))
+        thrower_form.addRow(self.thrower_label, thrower_field)
         right.addLayout(thrower_form)
 
         event_row = QHBoxLayout()
-        self.round_end_button = QPushButton("Mark round 1 end")
-        self.game_end_button = QPushButton("Mark game end")
+        self.round_end_button = QPushButton(tr("Mark round 1 end"))
+        self.game_end_button = QPushButton(tr("Mark game end"))
         event_row.addWidget(self.round_end_button)
         event_row.addWidget(self.game_end_button)
         right.addLayout(event_row)
-        right.addWidget(QLabel("Timeline events"))
+        self.timeline_label = QLabel(tr("Timeline events"))
+        right.addWidget(self.timeline_label)
         self.impact_table = QTableWidget(0, 2)
         self.impact_table.setAlternatingRowColors(True)
         self.impact_table.setShowGrid(False)
-        self.impact_table.setHorizontalHeaderLabels(["Event", "Timestamp"])
+        self.impact_table.setHorizontalHeaderLabels([tr("Event"), tr("Timestamp")])
         self.impact_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.impact_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.impact_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         right.addWidget(self.impact_table, 1)
-        self.remove_button = QPushButton("Remove selected")
-        self.export_button = QPushButton("Export highlights…")
+        self.remove_button = QPushButton(tr("Remove selected"))
+        self.export_button = QPushButton(tr("Export highlights…"))
         right.addWidget(self.remove_button)
         self.export_summary = QLabel()
         self.export_summary.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.export_summary.setWordWrap(True)
         self.export_summary.setStyleSheet("color: palette(placeholder-text);")
         self.export_summary.setToolTip(
-            "Estimated video length, including title/results and transitions. "
-            "Highlights after the game-end marker are excluded."
+            tr(
+                "Estimated video length, including title/results and transitions. "
+                "Highlights after the game-end marker are excluded."
+            )
         )
         right.addWidget(self.export_summary)
         right.addWidget(self.export_button)
@@ -549,28 +566,109 @@ class MainWindow(QMainWindow):
             self._add_shortcut(text, keys, callback)
 
     def _build_menu(self) -> None:
-        menu = self.menuBar().addMenu("&File")
+        self.file_menu = menu = self.menuBar().addMenu(tr("&File"))
         for text, shortcut, callback in (
             ("New match…", "Ctrl+N", self.new_project),
             ("Match details…", "Ctrl+D", self.edit_project_details),
         ):
-            action = QAction(text, self)
+            action = QAction(tr(text), self)
+            action.setProperty("translation_source", text)
             action.setShortcut(QKeySequence(shortcut))
             action.triggered.connect(callback)
             menu.addAction(action)
 
-        help_menu = self.menuBar().addMenu("&Help")
-        hotkeys_menu = help_menu.addMenu("&Hotkeys")
+        self.help_menu = help_menu = self.menuBar().addMenu(tr("&Help"))
+        self.hotkeys_menu = hotkeys_menu = help_menu.addMenu(tr("&Hotkeys"))
         hotkeys_menu.addActions(self.actions())
         hotkeys_menu.addSeparator()
         hotkeys_menu.addActions(menu.actions())
+        self.language_menu = help_menu.addMenu(tr("&Language"))
+        self.language_group = QActionGroup(self)
+        for code, name in LANGUAGES.items():
+            action = self.language_menu.addAction(name)
+            action.setCheckable(True)
+            action.setChecked(code == language())
+            action.setData(code)
+            self.language_group.addAction(action)
+            action.triggered.connect(lambda _checked, code=code: self._change_language(code))
         help_menu.addSeparator()
-        about_action = QAction("&About Kyykkä Editor…", self)
+        self.about_action = about_action = QAction(tr("&About Kyykkä Editor…"), self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
 
     def show_about(self) -> None:
         AboutDialog(self).exec()
+
+    def _change_language(self, code: str) -> None:
+        if self.render_thread is not None:
+            return
+        set_language(code, persist=True)
+        self._retranslate_ui()
+
+    def _retranslate_ui(self) -> None:
+        for widget, source in (
+            (self.mark_button, "Mark impact"),
+            (self.undo_button, "Undo"),
+            (self.details_button, "Match details…"),
+            (self.before_label, "Before impact"),
+            (self.after_label, "After impact"),
+            (self.thrower_label, "Current thrower"),
+            (self.thrower_shortcut_hint, ",=next  .=previous"),
+            (self.round_end_button, "Mark round 1 end"),
+            (self.game_end_button, "Mark game end"),
+            (self.timeline_label, "Timeline events"),
+            (self.remove_button, "Remove selected"),
+            (self.export_button, "Export highlights…"),
+            (self.about_action, "&About Kyykkä Editor…"),
+        ):
+            widget.setText(tr(source))
+        self.play_button.setText(
+            tr(
+                "Pause"
+                if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+                else "Play"
+            )
+        )
+        for menu, source in (
+            (self.file_menu, "&File"),
+            (self.help_menu, "&Help"),
+            (self.hotkeys_menu, "&Hotkeys"),
+            (self.language_menu, "&Language"),
+        ):
+            menu.setTitle(tr(source))
+        for action in self.findChildren(QAction):
+            source = action.property("translation_source")
+            if source:
+                action.setText(tr(source))
+        for action in self.language_group.actions():
+            action.setChecked(action.data() == language())
+        self.export_summary.setToolTip(
+            tr(
+                "Estimated video length, including title/results and transitions. "
+                "Highlights after the game-end marker are excluded."
+            )
+        )
+        self.impact_table.setHorizontalHeaderLabels([tr("Event"), tr("Timestamp")])
+        selected = [(item.row(), item.column()) for item in self.impact_table.selectedItems()]
+        self._refresh_impacts()
+        for row, column in selected:
+            self.impact_table.item(row, column).setSelected(True)
+        if not self.project.video_path:
+            self.video_status.setText(tr("No video selected"))
+        elif self.player.mediaStatus() == QMediaPlayer.MediaStatus.LoadingMedia:
+            self.video_status.setText(
+                tr("Loading {name}…", name=Path(self.project.video_path).name)
+            )
+        elif self.player.error() != QMediaPlayer.Error.NoError:
+            self.video_status.setText(tr("Could not load video"))
+        else:
+            source = (
+                "Playing: {name}"
+                if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+                else "Loaded: {name}"
+            )
+            self.video_status.setText(tr(source, name=Path(self.project.video_path).name))
+        self.statusBar().clearMessage()
 
     def new_project(self) -> None:
         candidate = EditorProject()
@@ -594,7 +692,8 @@ class MainWindow(QMainWindow):
         self.thrower_combo.setCurrentIndex(max(0, thrower_index))
 
     def _add_shortcut(self, text: str, keys: str, callback: Callable[[], None]) -> None:
-        action = QAction(text, self)
+        action = QAction(tr(text), self)
+        action.setProperty("translation_source", text)
         action.setShortcut(QKeySequence(keys))
         action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         action.triggered.connect(callback)
@@ -607,7 +706,7 @@ class MainWindow(QMainWindow):
         self.player.mediaStatusChanged.connect(self._media_status_changed)
         self.player.playbackStateChanged.connect(
             lambda state: self.play_button.setText(
-                "Pause" if state == QMediaPlayer.PlaybackState.PlayingState else "Play"
+                tr("Pause") if state == QMediaPlayer.PlaybackState.PlayingState else tr("Play")
             )
         )
         self.player.errorOccurred.connect(self._playback_error)
@@ -616,11 +715,13 @@ class MainWindow(QMainWindow):
     def _load_video(self, path: Path) -> None:
         path = path.resolve()
         if not path.is_file():
-            QMessageBox.warning(self, "Video not found", f"The video file does not exist:\n{path}")
+            QMessageBox.warning(
+                self, tr("Video not found"), tr("The video file does not exist:\n{path}", path=path)
+            )
             return
         self.player.stop()
         self.project.video_path = str(path)
-        self.video_status.setText(f"Loading {path.name}…")
+        self.video_status.setText(tr("Loading {name}…", name=path.name))
         self.video_status.setToolTip(str(path))
         self.player.setSource(QUrl.fromLocalFile(str(path)))
         self.player.play()
@@ -629,20 +730,26 @@ class MainWindow(QMainWindow):
     def _media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
         if status == QMediaPlayer.MediaStatus.LoadedMedia:
             name = Path(self.project.video_path).name
-            self.video_status.setText(f"Loaded: {name}")
+            self.video_status.setText(tr("Loaded: {name}", name=name))
         elif status == QMediaPlayer.MediaStatus.BufferedMedia:
-            self.video_status.setText(f"Playing: {Path(self.project.video_path).name}")
+            self.video_status.setText(
+                tr("Playing: {name}", name=Path(self.project.video_path).name)
+            )
         elif status == QMediaPlayer.MediaStatus.EndOfMedia:
-            self.video_status.setText(f"Loaded: {Path(self.project.video_path).name}")
+            self.video_status.setText(tr("Loaded: {name}", name=Path(self.project.video_path).name))
         elif status == QMediaPlayer.MediaStatus.InvalidMedia:
-            self.video_status.setText("Could not load video")
+            self.video_status.setText(tr("Could not load video"))
         self._update_action_states()
 
     def _playback_error(self, _error: QMediaPlayer.Error, message: str) -> None:
         self._update_action_states()
-        self.video_status.setText("Could not load video")
-        detail = message or "Qt could not decode this video file."
-        QMessageBox.warning(self, "Playback error", f"{detail}\n\nFile: {self.project.video_path}")
+        self.video_status.setText(tr("Could not load video"))
+        detail = message or tr("Qt could not decode this video file.")
+        QMessageBox.warning(
+            self,
+            tr("Playback error"),
+            tr("{detail}\n\nFile: {path}", detail=detail, path=self.project.video_path),
+        )
 
     def toggle_playback(self) -> None:
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
@@ -656,7 +763,9 @@ class MainWindow(QMainWindow):
 
     def mark_impact(self) -> None:
         if not self.project.video_path:
-            QMessageBox.information(self, "No video", "Open a video before marking impacts.")
+            QMessageBox.information(
+                self, tr("No video"), tr("Open a video before marking impacts.")
+            )
             return
         self.project.add_impact(self.player.position(), self.thrower_combo.currentText())
         self.mark_history.append(self.player.position())
@@ -691,14 +800,14 @@ class MainWindow(QMainWindow):
 
     def mark_round_end(self) -> None:
         if not self.project.video_path:
-            QMessageBox.information(self, "No video", "Open a video before marking events.")
+            QMessageBox.information(self, tr("No video"), tr("Open a video before marking events."))
             return
         self.project.round_one_end_ms = self.player.position()
         self._refresh_impacts()
 
     def mark_game_end(self) -> None:
         if not self.project.video_path:
-            QMessageBox.information(self, "No video", "Open a video before marking events.")
+            QMessageBox.information(self, tr("No video"), tr("Open a video before marking events."))
             return
         self.project.game_end_ms = self.player.position()
         self._refresh_impacts()
@@ -728,8 +837,17 @@ class MainWindow(QMainWindow):
         timestamp_font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         base = self.impact_table.palette().base().color()
         for row, (kind, timestamp, source_index) in enumerate(timeline):
-            event_item = QTableWidgetItem(kind)
-            event_item.setToolTip(kind)
+            event_text = (
+                tr(kind)
+                if source_index is None
+                else (
+                    tr("Impact: {name}", name=self.project.impacts[source_index].thrower)
+                    if self.project.impacts[source_index].thrower
+                    else tr("Impact")
+                )
+            )
+            event_item = QTableWidgetItem(event_text)
+            event_item.setToolTip(event_text)
             time_item = QTableWidgetItem(format_timestamp(timestamp))
             time_item.setFont(timestamp_font)
             time_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -801,13 +919,17 @@ class MainWindow(QMainWindow):
         )
         count, duration = estimate_export(preview, self.player.duration())
         self.exportable_count, self.estimated_duration = count, duration
-        label = "highlight" if count == 1 else "highlights"
         length = (
-            "unavailable"
+            tr("unavailable")
             if duration is None
             else format_timestamp(round(duration / 1000) * 1000).split(".")[0]
         )
-        self.export_summary.setText(f"{count} {label} · Estimated video: {length}")
+        source = (
+            "{count} highlight · Estimated video: {duration}"
+            if count == 1
+            else "{count} highlights · Estimated video: {duration}"
+        )
+        self.export_summary.setText(tr(source, count=count, duration=length))
         self._update_action_states()
 
     def _position_changed(self, position: int) -> None:
@@ -843,7 +965,7 @@ class MainWindow(QMainWindow):
             self._load_video(Path(self.project.video_path))
         else:
             self.player.setSource(QUrl())
-            self.video_status.setText("No video selected")
+            self.video_status.setText(tr("No video selected"))
         self._update_action_states()
 
     def export_video(self) -> None:
@@ -852,21 +974,21 @@ class MainWindow(QMainWindow):
         self._sync_form()
         if not self.project.impacts:
             QMessageBox.information(
-                self, "No impacts", "Mark at least one impact before exporting."
+                self, tr("No impacts"), tr("Mark at least one impact before exporting.")
             )
             return
         missing_markers = []
         if self.project.round_one_end_ms is None:
-            missing_markers.append("Round 1 end (round-one result screen)")
+            missing_markers.append(tr("Round 1 end (round-one result screen)"))
         if self.project.game_end_ms is None:
-            missing_markers.append("Game end (final result/winner screen)")
+            missing_markers.append(tr("Game end (final result/winner screen)"))
         if missing_markers:
             answer = QMessageBox.question(
                 self,
-                "Missing end markers",
-                "The following markers have not been added:\n\n"
+                tr("Missing end markers"),
+                tr("The following markers have not been added:\n\n")
                 + "\n".join(missing_markers)
-                + "\n\nProceed without these markers and their result screens?",
+                + tr("\n\nProceed without these markers and their result screens?"),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -877,15 +999,16 @@ class MainWindow(QMainWindow):
         )
         filename, _ = QFileDialog.getSaveFileName(
             self,
-            "Export highlights",
+            tr("Export highlights"),
             str(Path(default_dir) / default_export_filename(self.project)),
-            "MP4 video (*.mp4)",
+            tr("MP4 video (*.mp4)"),
+            options=QFileDialog.Option.DontUseNativeDialog,
         )
         if not filename:
             return
         self.export_button.setEnabled(False)
-        self.export_button.setText("Rendering…")
-        self.statusBar().showMessage("Rendering highlights…")
+        self.export_button.setText(tr("Rendering…"))
+        self.statusBar().showMessage(tr("Rendering highlights…"))
         snapshot = deepcopy(self.project)
         self.render_thread = RenderThread(snapshot, Path(filename), self.player.duration())
         self._update_action_states()
@@ -917,19 +1040,21 @@ class MainWindow(QMainWindow):
             self.render_thread.deleteLater()
             self.render_thread = None
         self._update_action_states()
-        self.export_button.setText("Export highlights…")
+        self.export_button.setText(tr("Export highlights…"))
         outcome = self.render_outcome
         self.render_outcome = None
         if outcome is not None:
             kind, message = outcome
             if kind == "success":
-                self.statusBar().showMessage("Export complete", 5_000)
-                QMessageBox.information(self, "Export complete", f"Saved highlights to:\n{message}")
+                self.statusBar().showMessage(tr("Export complete"), 5_000)
+                QMessageBox.information(
+                    self, tr("Export complete"), tr("Saved highlights to:\n{path}", path=message)
+                )
             elif kind == "error":
                 self.statusBar().clearMessage()
-                QMessageBox.critical(self, "Export failed", message)
+                QMessageBox.critical(self, tr("Export failed"), message)
             else:
-                self.statusBar().showMessage("Export cancelled", 5_000)
+                self.statusBar().showMessage(tr("Export cancelled"), 5_000)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self.render_thread is not None:
@@ -948,6 +1073,7 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Kyykka Editor")
     app.setWindowIcon(QIcon(str(ICON_PATH)))
+    set_language(saved_language())
     window = MainWindow()
     window.show()
     QTimer.singleShot(0, window.new_project)

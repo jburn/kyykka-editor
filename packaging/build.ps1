@@ -78,6 +78,7 @@ $RequiredOutput = @(
     (Join-Path $OutputDirectory "KyykkaEditor.exe"),
     (Join-Path $OutputDirectory "_internal\kyykka_editor\bin\ffmpeg.exe"),
     (Join-Path $OutputDirectory "_internal\kyykka_editor\bin\ffprobe.exe"),
+    (Join-Path $OutputDirectory "_internal\kyykka_editor\translations\qtbase_fi.qm"),
     (Join-Path $OutputDirectory "LICENSE"),
     (Join-Path $OutputDirectory "THIRD_PARTY_NOTICES.md")
 )
