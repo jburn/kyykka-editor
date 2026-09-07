@@ -1,3 +1,2 @@
-- Add end user instructions behind top bar menu
 - revise UI layout
 - Add finnish language support + language configuration

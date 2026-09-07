@@ -111,6 +111,8 @@ contain separately licensed components; see
 
 ## Controls
 
+Open **Help → Hotkeys** to see all editor shortcuts.
+
 | Action | Control | Shortcut |
 | --- | --- | --- |
 | Play or pause | Play/Pause | Space |

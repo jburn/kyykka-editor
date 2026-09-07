@@ -524,19 +524,19 @@ class MainWindow(QMainWindow):
         self.slider.seek_requested.connect(self.player.setPosition)
         self.impact_table.cellDoubleClicked.connect(self._seek_to_row)
 
-        for keys, callback in (
-            ("Space", self.toggle_playback),
-            ("M", self.mark_impact),
-            (",", lambda: self.cycle_thrower()),
-            (".", lambda: self.cycle_thrower(-1)),
-            ("Ctrl+Z", self.undo_impact),
-            ("Left", lambda: self.seek_relative(-3_000)),
-            ("Right", lambda: self.seek_relative(5_000)),
-            ("Delete", self.remove_selected),
-            ("Ctrl+R", self.mark_round_end),
-            ("Ctrl+G", self.mark_game_end),
+        for text, keys, callback in (
+            ("Play or pause", "Space", self.toggle_playback),
+            ("Mark impact", "M", self.mark_impact),
+            ("Next thrower", ",", lambda: self.cycle_thrower()),
+            ("Previous thrower", ".", lambda: self.cycle_thrower(-1)),
+            ("Undo latest mark", "Ctrl+Z", self.undo_impact),
+            ("Seek backward 3 seconds", "Left", lambda: self.seek_relative(-3_000)),
+            ("Seek forward 5 seconds", "Right", lambda: self.seek_relative(5_000)),
+            ("Remove selected event", "Delete", self.remove_selected),
+            ("Mark round 1 end", "Ctrl+R", self.mark_round_end),
+            ("Mark game end", "Ctrl+G", self.mark_game_end),
         ):
-            self._add_shortcut(keys, callback)
+            self._add_shortcut(text, keys, callback)
 
     def _build_menu(self) -> None:
         menu = self.menuBar().addMenu("&File")
@@ -550,6 +550,11 @@ class MainWindow(QMainWindow):
             menu.addAction(action)
 
         help_menu = self.menuBar().addMenu("&Help")
+        hotkeys_menu = help_menu.addMenu("&Hotkeys")
+        hotkeys_menu.addActions(self.actions())
+        hotkeys_menu.addSeparator()
+        hotkeys_menu.addActions(menu.actions())
+        help_menu.addSeparator()
         about_action = QAction("&About Kyykkä Editor…", self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
@@ -575,8 +580,8 @@ class MainWindow(QMainWindow):
         dialog.apply_to(self.project)
         self._load_form()
 
-    def _add_shortcut(self, keys: str, callback: Callable[[], None]) -> None:
-        action = QAction(self)
+    def _add_shortcut(self, text: str, keys: str, callback: Callable[[], None]) -> None:
+        action = QAction(text, self)
         action.setShortcut(QKeySequence(keys))
         action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         action.triggered.connect(callback)
