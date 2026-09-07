@@ -374,7 +374,16 @@ class MainWindow(QMainWindow):
 
         thrower_form = QFormLayout()
         self.thrower_combo = QComboBox()
-        thrower_form.addRow("Current thrower", self.thrower_combo)
+        thrower_field = QVBoxLayout()
+        thrower_field.setSpacing(2)
+        thrower_field.addWidget(self.thrower_combo)
+        self.thrower_shortcut_hint = QLabel(", next · . previous")
+        hint_font = self.thrower_shortcut_hint.font()
+        hint_font.setPointSizeF(max(8.0, hint_font.pointSizeF() - 1.0))
+        self.thrower_shortcut_hint.setFont(hint_font)
+        self.thrower_shortcut_hint.setStyleSheet("color: palette(placeholder-text);")
+        thrower_field.addWidget(self.thrower_shortcut_hint)
+        thrower_form.addRow("Current thrower", thrower_field)
         right.addLayout(thrower_form)
 
         event_row = QHBoxLayout()
@@ -424,6 +433,8 @@ class MainWindow(QMainWindow):
         for keys, callback in (
             ("Space", self.toggle_playback),
             ("M", self.mark_impact),
+            (",", lambda: self.cycle_thrower()),
+            (".", lambda: self.cycle_thrower(-1)),
             ("Ctrl+Z", self.undo_impact),
             ("Left", lambda: self.seek_relative(-3_000)),
             ("Right", lambda: self.seek_relative(5_000)),
@@ -582,7 +593,7 @@ class MainWindow(QMainWindow):
     def _timeline_items(self) -> list[tuple[str, int, int | None]]:
         items = [
             (
-                f"Impact — {impact.thrower}" if impact.thrower else "Impact",
+                f"Impact: {impact.thrower}" if impact.thrower else "Impact",
                 impact.timestamp_ms,
                 index,
             )
@@ -614,6 +625,13 @@ class MainWindow(QMainWindow):
     def _sync_form(self) -> None:
         self.project.pre_roll_ms = self.pre_roll.value() * 1_000
         self.project.post_roll_ms = self.post_roll.value() * 1_000
+
+    def cycle_thrower(self, direction: int = 1) -> None:
+        if self.thrower_combo.count() <= 1:
+            return
+        current_index = self.thrower_combo.currentIndex()
+        next_index = (current_index + direction) % self.thrower_combo.count()
+        self.thrower_combo.setCurrentIndex(next_index)
 
     def _load_form(self) -> None:
         self.thrower_combo.clear()

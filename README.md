@@ -110,13 +110,17 @@ contain separately licensed components; see
 
 ## Controls
 
-| Action | Button | Shortcut |
+| Action | Control | Shortcut |
 | --- | --- | --- |
 | Play or pause | Play/Pause | Space |
 | Mark impact | Mark impact | M |
+| Cycle to next thrower | Current thrower dropdown | , |
+| Cycle to previous thrower | Current thrower dropdown | . |
 | Undo latest mark | Undo | Ctrl+Z |
 | Seek backward 3 seconds | -3 s | Left arrow |
 | Seek forward 5 seconds | +5 s | Right arrow |
 | Remove selected mark | Remove | Delete |
 
-All primary actions are available as buttons; shortcuts are supporting controls.
+Primary actions are available through visible controls; shortcuts are supporting controls.
+Thrower cycling follows dropdown order and wraps in either direction, including
+the blank selection.
