@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QPoint, Qt, QUrl
+from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import QApplication
 
@@ -115,9 +116,9 @@ def test_main_window_timeline_is_sorted_and_player_list_is_fixed(
     ]
     assert window.thrower_combo.currentText() == ""
     assert [window.impact_table.item(row, 0).text() for row in range(4)] == [
-        "Impact — Alice",
+        "Impact: Alice",
         "Round 1 end",
-        "Impact — Bob",
+        "Impact: Bob",
         "Game end",
     ]
     window.close()
@@ -134,24 +135,26 @@ def test_remove_selected_removes_event_not_neighboring_impact(qapp: QApplication
     window.close()
 
 
-def test_export_progress_state_is_restored(qapp: QApplication) -> None:
+def test_export_button_state_is_restored(qapp: QApplication, monkeypatch) -> None:
     window = MainWindow()
+    _set_ready_video(window, monkeypatch)
+    window.project.add_impact(1000)
+    window._refresh_impacts()
     window.export_button.setEnabled(False)
     window.export_button.setText("Rendering…")
-    window.export_progress.show()
-    window.export_status.show()
     window._export_finished()
     assert window.export_button.isEnabled()
     assert window.export_button.text() == "Export highlights…"
-    assert window.export_progress.isHidden()
-    assert window.export_status.isHidden()
     window.close()
 
 
-def test_render_dialog_cancel_stays_open_until_worker_finishes(qapp):
+def test_render_dialog_cancel_stays_open_until_worker_finishes(qapp, monkeypatch):
     from kyykka_editor.app import RenderDialog, RenderThread
 
     window = MainWindow()
+    _set_ready_video(window, monkeypatch)
+    window.project.add_impact(1000)
+    window._refresh_impacts()
     dialog = RenderDialog(window)
     worker = RenderThread(EditorProject(), Path("out.mp4"), 1000)
     window.render_dialog = dialog
@@ -171,4 +174,64 @@ def test_render_dialog_cancel_stays_open_until_worker_finishes(qapp):
     assert window.render_thread is None
     assert window.export_button.isEnabled()
     assert window.statusBar().currentMessage() == "Export cancelled"
+    window.close()
+
+
+def _set_ready_video(window, monkeypatch):
+    window.project.video_path = str(Path("match.mp4").resolve())
+    monkeypatch.setattr(
+        window.player, "source", lambda: QUrl.fromLocalFile(window.project.video_path)
+    )
+    monkeypatch.setattr(window.player, "duration", lambda: 10000)
+    monkeypatch.setattr(window.player, "position", lambda: 0)
+    monkeypatch.setattr(window.player, "isSeekable", lambda: True)
+    monkeypatch.setattr(window.player, "mediaStatus", lambda: QMediaPlayer.MediaStatus.LoadedMedia)
+    window._refresh_export_summary()
+
+
+def test_actions_follow_video_selection_and_history(qapp, monkeypatch):
+    window = MainWindow()
+    for button in (
+        window.play_button,
+        window.mark_button,
+        window.round_end_button,
+        window.game_end_button,
+        window.back_button,
+        window.forward_button,
+        window.undo_button,
+        window.remove_button,
+        window.export_button,
+    ):
+        assert not button.isEnabled()
+    assert all(not action.isEnabled() for action in window.shortcut_actions.values())
+    _set_ready_video(window, monkeypatch)
+    assert window.play_button.isEnabled()
+    assert window.mark_button.isEnabled()
+    assert window.shortcut_actions["M"].isEnabled()
+    assert not window.back_button.isEnabled()
+    assert window.forward_button.isEnabled()
+    assert not window.export_button.isEnabled()
+    window.mark_impact()
+    assert window.undo_button.isEnabled()
+    assert window.shortcut_actions["Ctrl+Z"].isEnabled()
+    assert window.export_button.isEnabled()
+    window.impact_table.selectRow(0)
+    assert window.remove_button.isEnabled()
+    assert window.shortcut_actions["Delete"].isEnabled()
+    window.impact_table.clearSelection()
+    assert not window.remove_button.isEnabled()
+    window.undo_impact()
+    assert not window.undo_button.isEnabled()
+    assert not window.shortcut_actions["Ctrl+Z"].isEnabled()
+    assert not window.export_button.isEnabled()
+    monkeypatch.setattr(window.player, "position", lambda: 10000)
+    window._position_changed(10000)
+    assert window.back_button.isEnabled()
+    assert not window.forward_button.isEnabled()
+    assert not window.shortcut_actions["Right"].isEnabled()
+    monkeypatch.setattr(window.player, "mediaStatus", lambda: QMediaPlayer.MediaStatus.InvalidMedia)
+    window._media_status_changed(QMediaPlayer.MediaStatus.InvalidMedia)
+    assert not window.mark_button.isEnabled()
+    assert not window.play_button.isEnabled()
+    assert not window.slider.isEnabled()
     window.close()

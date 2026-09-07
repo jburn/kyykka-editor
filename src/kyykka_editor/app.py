@@ -4,6 +4,7 @@ import os
 import sys
 from collections.abc import Callable
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 from threading import Event
 
@@ -19,6 +20,7 @@ from PySide6.QtGui import (
     QCloseEvent,
     QColor,
     QFont,
+    QFontDatabase,
     QFontMetrics,
     QIcon,
     QKeySequence,
@@ -61,7 +63,7 @@ from PySide6.QtWidgets import (
 
 from . import __version__
 from .model import EditorProject, default_export_filename, format_timestamp
-from .render import RenderCancelled, RenderError, render_highlights
+from .render import RenderCancelled, RenderError, estimate_export, render_highlights
 
 ICON_PATH = Path(__file__).with_name("assets") / "kyykka-editor.png"
 PROJECT_URL = "https://github.com/jburn/kyykka-editor"
@@ -391,6 +393,9 @@ class MainWindow(QMainWindow):
         self.render_thread: RenderThread | None = None
         self.render_dialog: RenderDialog | None = None
         self.render_outcome: tuple[str, str] | None = None
+        self.shortcut_actions: dict[str, QAction] = {}
+        self.exportable_count = 0
+        self.estimated_duration: int | None = None
         self.setWindowTitle("Kyykkä Editor")
         self.setWindowIcon(QIcon(str(ICON_PATH)))
         self.resize(1180, 780)
@@ -488,6 +493,8 @@ class MainWindow(QMainWindow):
         right.addLayout(event_row)
         right.addWidget(QLabel("Timeline events"))
         self.impact_table = QTableWidget(0, 2)
+        self.impact_table.setAlternatingRowColors(True)
+        self.impact_table.setShowGrid(False)
         self.impact_table.setHorizontalHeaderLabels(["Event", "Timestamp"])
         self.impact_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.impact_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -495,17 +502,17 @@ class MainWindow(QMainWindow):
         right.addWidget(self.impact_table, 1)
         self.remove_button = QPushButton("Remove selected")
         self.export_button = QPushButton("Export highlights…")
-        self.export_progress = QProgressBar()
-        self.export_progress.setRange(0, 0)
-        self.export_progress.setTextVisible(False)
-        self.export_progress.setToolTip("FFmpeg is rendering the highlight video")
-        self.export_progress.hide()
-        self.export_status = QLabel()
-        self.export_status.hide()
         right.addWidget(self.remove_button)
+        self.export_summary = QLabel()
+        self.export_summary.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.export_summary.setWordWrap(True)
+        self.export_summary.setStyleSheet("color: palette(placeholder-text);")
+        self.export_summary.setToolTip(
+            "Estimated video length, including title/results and transitions. "
+            "Highlights after the game-end marker are excluded."
+        )
+        right.addWidget(self.export_summary)
         right.addWidget(self.export_button)
-        right.addWidget(self.export_progress)
-        right.addWidget(self.export_status)
 
         outer.addLayout(left, 3)
         outer.addLayout(right, 1)
@@ -518,11 +525,14 @@ class MainWindow(QMainWindow):
         self.undo_button.clicked.connect(self.undo_impact)
         self.remove_button.clicked.connect(self.remove_selected)
         self.export_button.clicked.connect(self.export_video)
+        self.pre_roll.valueChanged.connect(self._refresh_export_summary)
+        self.post_roll.valueChanged.connect(self._refresh_export_summary)
         self.round_end_button.clicked.connect(self.mark_round_end)
         self.game_end_button.clicked.connect(self.mark_game_end)
         self.slider.sliderMoved.connect(self.player.setPosition)
         self.slider.seek_requested.connect(self.player.setPosition)
         self.impact_table.cellDoubleClicked.connect(self._seek_to_row)
+        self.impact_table.itemSelectionChanged.connect(self._update_action_states)
 
         for text, keys, callback in (
             ("Play or pause", "Space", self.toggle_playback),
@@ -577,8 +587,11 @@ class MainWindow(QMainWindow):
         dialog = ProjectDialog(self.project, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
+        current_thrower = self.thrower_combo.currentText()
         dialog.apply_to(self.project)
         self._load_form()
+        thrower_index = self.thrower_combo.findText(current_thrower)
+        self.thrower_combo.setCurrentIndex(max(0, thrower_index))
 
     def _add_shortcut(self, text: str, keys: str, callback: Callable[[], None]) -> None:
         action = QAction(text, self)
@@ -586,6 +599,7 @@ class MainWindow(QMainWindow):
         action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         action.triggered.connect(callback)
         self.addAction(action)
+        self.shortcut_actions[keys] = action
 
     def _connect_player(self) -> None:
         self.player.positionChanged.connect(self._position_changed)
@@ -597,6 +611,7 @@ class MainWindow(QMainWindow):
             )
         )
         self.player.errorOccurred.connect(self._playback_error)
+        self.player.seekableChanged.connect(self._update_action_states)
 
     def _load_video(self, path: Path) -> None:
         path = path.resolve()
@@ -621,8 +636,10 @@ class MainWindow(QMainWindow):
             self.video_status.setText(f"Loaded: {Path(self.project.video_path).name}")
         elif status == QMediaPlayer.MediaStatus.InvalidMedia:
             self.video_status.setText("Could not load video")
+        self._update_action_states()
 
     def _playback_error(self, _error: QMediaPlayer.Error, message: str) -> None:
+        self._update_action_states()
         self.video_status.setText("Could not load video")
         detail = message or "Qt could not decode this video file."
         QMessageBox.warning(self, "Playback error", f"{detail}\n\nFile: {self.project.video_path}")
@@ -687,7 +704,8 @@ class MainWindow(QMainWindow):
         self._refresh_impacts()
 
     def _seek_to_row(self, row: int, _column: int) -> None:
-        self.player.setPosition(self._timeline_items()[row][1])
+        if self.slider.isEnabled():
+            self.player.setPosition(self._timeline_items()[row][1])
 
     def _timeline_items(self) -> list[tuple[str, int, int | None]]:
         items = [
@@ -707,19 +725,101 @@ class MainWindow(QMainWindow):
     def _refresh_impacts(self) -> None:
         timeline = self._timeline_items()
         self.impact_table.setRowCount(len(timeline))
-        for row, (kind, timestamp, _source_index) in enumerate(timeline):
-            self.impact_table.setItem(row, 0, QTableWidgetItem(kind))
-            self.impact_table.setItem(row, 1, QTableWidgetItem(format_timestamp(timestamp)))
-        self.undo_button.setEnabled(bool(self.mark_history))
+        timestamp_font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        base = self.impact_table.palette().base().color()
+        for row, (kind, timestamp, source_index) in enumerate(timeline):
+            event_item = QTableWidgetItem(kind)
+            event_item.setToolTip(kind)
+            time_item = QTableWidgetItem(format_timestamp(timestamp))
+            time_item.setFont(timestamp_font)
+            time_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            if source_index is None:
+                accent = QColor("#4488cc" if kind == "Round 1 end" else "#35a575")
+                background = QColor(
+                    round(base.red() * 0.85 + accent.red() * 0.15),
+                    round(base.green() * 0.85 + accent.green() * 0.15),
+                    round(base.blue() * 0.85 + accent.blue() * 0.15),
+                )
+                for item in (event_item, time_item):
+                    font = item.font()
+                    font.setBold(True)
+                    item.setFont(font)
+                    item.setBackground(QBrush(background))
+            self.impact_table.setItem(row, 0, event_item)
+            self.impact_table.setItem(row, 1, time_item)
+        self._refresh_export_summary()
+
+    def _update_action_states(self) -> None:
+        idle = self.render_thread is None
+        ready = (
+            bool(self.project.video_path)
+            and self.player.source()
+            == QUrl.fromLocalFile(str(Path(self.project.video_path).resolve()))
+            and self.player.duration() > 0
+            and self.player.error() == QMediaPlayer.Error.NoError
+            and self.player.mediaStatus()
+            in {
+                QMediaPlayer.MediaStatus.LoadedMedia,
+                QMediaPlayer.MediaStatus.BufferingMedia,
+                QMediaPlayer.MediaStatus.BufferedMedia,
+                QMediaPlayer.MediaStatus.StalledMedia,
+                QMediaPlayer.MediaStatus.EndOfMedia,
+            }
+        )
+        seekable = idle and ready and self.player.isSeekable()
+        states = (
+            ("Space", self.play_button, idle and ready),
+            ("M", self.mark_button, idle and ready),
+            ("Ctrl+R", self.round_end_button, idle and ready),
+            ("Ctrl+G", self.game_end_button, idle and ready),
+            ("Left", self.back_button, seekable and self.player.position() > 0),
+            (
+                "Right",
+                self.forward_button,
+                seekable and self.player.position() < self.player.duration(),
+            ),
+            ("Ctrl+Z", self.undo_button, idle and bool(self.mark_history)),
+            ("Delete", self.remove_button, idle and bool(self.impact_table.selectedIndexes())),
+        )
+        for keys, button, enabled in states:
+            button.setEnabled(enabled)
+            self.shortcut_actions[keys].setEnabled(enabled)
+        self.slider.setEnabled(seekable)
+        has_players = self.thrower_combo.count() > 1
+        self.thrower_combo.setEnabled(idle and has_players)
+        for keys in (",", "."):
+            self.shortcut_actions[keys].setEnabled(idle and has_players)
+        self.export_button.setEnabled(
+            idle and ready and self.exportable_count > 0 and self.estimated_duration is not None
+        )
+
+    def _refresh_export_summary(self) -> None:
+        preview = replace(
+            self.project,
+            pre_roll_ms=self.pre_roll.value() * 1000,
+            post_roll_ms=self.post_roll.value() * 1000,
+        )
+        count, duration = estimate_export(preview, self.player.duration())
+        self.exportable_count, self.estimated_duration = count, duration
+        label = "highlight" if count == 1 else "highlights"
+        length = (
+            "unavailable"
+            if duration is None
+            else format_timestamp(round(duration / 1000) * 1000).split(".")[0]
+        )
+        self.export_summary.setText(f"{count} {label} · Estimated video: {length}")
+        self._update_action_states()
 
     def _position_changed(self, position: int) -> None:
         if not self.slider.isSliderDown():
             self.slider.setValue(position)
         self.position_label.setText(format_timestamp(position))
+        self._update_action_states()
 
     def _duration_changed(self, duration: int) -> None:
         self.slider.setRange(0, duration)
         self.duration_label.setText(format_timestamp(duration))
+        self._refresh_export_summary()
 
     def _sync_form(self) -> None:
         self.project.pre_roll_ms = self.pre_roll.value() * 1_000
@@ -741,6 +841,10 @@ class MainWindow(QMainWindow):
         self._refresh_impacts()
         if self.project.video_path:
             self._load_video(Path(self.project.video_path))
+        else:
+            self.player.setSource(QUrl())
+            self.video_status.setText("No video selected")
+        self._update_action_states()
 
     def export_video(self) -> None:
         if self.render_thread is not None:
@@ -751,6 +855,23 @@ class MainWindow(QMainWindow):
                 self, "No impacts", "Mark at least one impact before exporting."
             )
             return
+        missing_markers = []
+        if self.project.round_one_end_ms is None:
+            missing_markers.append("Round 1 end (round-one result screen)")
+        if self.project.game_end_ms is None:
+            missing_markers.append("Game end (final result/winner screen)")
+        if missing_markers:
+            answer = QMessageBox.question(
+                self,
+                "Missing end markers",
+                "The following markers have not been added:\n\n"
+                + "\n".join(missing_markers)
+                + "\n\nProceed without these markers and their result screens?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
         default_dir = QStandardPaths.writableLocation(
             QStandardPaths.StandardLocation.MoviesLocation
         )
@@ -764,12 +885,10 @@ class MainWindow(QMainWindow):
             return
         self.export_button.setEnabled(False)
         self.export_button.setText("Rendering…")
-        self.export_progress.show()
-        self.export_status.setText("Rendering video. This can take several minutes…")
-        self.export_status.show()
         self.statusBar().showMessage("Rendering highlights…")
         snapshot = deepcopy(self.project)
         self.render_thread = RenderThread(snapshot, Path(filename), self.player.duration())
+        self._update_action_states()
         self.render_thread.succeeded.connect(self._export_succeeded)
         self.render_thread.failed.connect(self._export_failed)
         self.render_thread.cancelled.connect(self._export_cancelled)
@@ -797,10 +916,8 @@ class MainWindow(QMainWindow):
         if self.render_thread is not None:
             self.render_thread.deleteLater()
             self.render_thread = None
-        self.export_button.setEnabled(True)
+        self._update_action_states()
         self.export_button.setText("Export highlights…")
-        self.export_progress.hide()
-        self.export_status.hide()
         outcome = self.render_outcome
         self.render_outcome = None
         if outcome is not None:

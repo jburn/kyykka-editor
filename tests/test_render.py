@@ -15,12 +15,34 @@ from kyykka_editor.render import (
     create_score_card,
     create_thrower_overlay,
     create_title_card,
+    estimate_export,
     find_media_tool,
     render_highlights,
     source_dimensions,
     source_frame_rate,
     source_has_audio,
 )
+
+
+@pytest.mark.parametrize(
+    "impacts, round_end, game_end, expected",
+    [
+        ([], None, None, (0, 0)),
+        ([Impact(10_000)], None, None, (1, 16_000)),
+        ([Impact(10_000)], None, 20_000, (1, 23_000)),
+        ([Impact(10_000)], 15_000, 20_000, (1, 32_000)),
+        ([Impact(10_000), Impact(11_000)], None, None, (2, 23_000)),
+        ([Impact(10_000), Impact(25_000)], None, 20_000, (1, 23_000)),
+        ([Impact(50_000)], None, None, (0, 0)),
+    ],
+)
+def test_export_estimate(impacts, round_end, game_end, expected):
+    project = EditorProject(impacts=impacts, round_one_end_ms=round_end, game_end_ms=game_end)
+    assert estimate_export(project, 30_000) == expected
+
+
+def test_export_estimate_waits_for_video_duration():
+    assert estimate_export(EditorProject(impacts=[Impact(1000)]), 0) == (1, None)
 
 
 def test_intervals_are_clamped_and_overlaps_are_merged() -> None:

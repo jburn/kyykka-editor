@@ -13,7 +13,7 @@ from threading import Event
 from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen
 
-from .model import EditorProject
+from .model import EditorProject, Impact
 
 TITLE_DURATION_MS = 4_000
 SCORE_CARD_DURATION_MS = 8_000
@@ -315,6 +315,65 @@ def build_intervals(project: EditorProject, duration_ms: int) -> list[tuple[floa
     return [(start / 1_000, end / 1_000) for start, end in intervals]
 
 
+def _impact_bounds(
+    project: EditorProject, impact: Impact, included: list[Impact], duration_ms: int
+) -> tuple[float, float]:
+    extra_before = EDGE_CLIP_EXTENSION_MS if impact is included[0] else 0
+    extra_after = EDGE_CLIP_EXTENSION_MS if impact is included[-1] else 0
+    return (
+        max(0, impact.timestamp_ms - project.pre_roll_ms - extra_before) / 1_000,
+        min(duration_ms, impact.timestamp_ms + project.post_roll_ms + extra_after) / 1_000,
+    )
+
+
+def estimate_export(project: EditorProject, duration_ms: int) -> tuple[int, int | None]:
+    """Return exported clip count and approximate output milliseconds, not render time."""
+    included = [
+        impact
+        for impact in project.impacts
+        if project.game_end_ms is None or impact.timestamp_ms <= project.game_end_ms
+    ]
+    if not included:
+        return 0, 0
+    if duration_ms <= 0:
+        return len(included), None
+    if (
+        project.round_one_end_ms is not None
+        and project.game_end_ms is not None
+        and project.game_end_ms < project.round_one_end_ms
+    ):
+        return len(included), None
+    segments = [("title", TITLE_DURATION_MS / 1_000)]
+    count = 0
+    groups = (
+        [included]
+        if project.round_one_end_ms is None
+        else [
+            [impact for impact in included if impact.timestamp_ms <= project.round_one_end_ms],
+            [impact for impact in included if impact.timestamp_ms > project.round_one_end_ms],
+        ]
+    )
+    for index, group in enumerate(groups):
+        for impact in group:
+            start, end = _impact_bounds(project, impact, included, duration_ms)
+            if end > start:
+                segments.append(("clip", end - start))
+                count += 1
+        if index == 0 and project.round_one_end_ms is not None:
+            segments.append(("round", SCORE_CARD_DURATION_MS / 1_000))
+    if project.game_end_ms is not None:
+        segments.append(("final", SCORE_CARD_DURATION_MS / 1_000))
+    if not count:
+        return 0, 0
+    if len(segments) >= 2 and segments[1][0] == "clip":
+        first, second = segments[0][1], segments[1][1]
+        segments[:2] = [("intro", first + second - min(CROSSFADE_SECONDS, first / 2, second / 2))]
+    if len(segments) >= 2 and segments[-1][0] == "final" and segments[-2][0] in {"clip", "intro"}:
+        first, second = segments[-2][1], segments[-1][1]
+        segments[-2:] = [("outro", first + second - min(CROSSFADE_SECONDS, first / 2, second / 2))]
+    return count, round(sum(seconds for _, seconds in segments) * 1_000)
+
+
 def render_highlights(
     project: EditorProject, output_path: Path, duration_ms: int, cancel: Event | None = None
 ) -> None:
@@ -487,16 +546,7 @@ def _render_highlights(
         for impact in impacts:
             if cancel.is_set():
                 raise RenderCancelled()
-            extra_before = EDGE_CLIP_EXTENSION_MS if impact is included_impacts[0] else 0
-            extra_after = EDGE_CLIP_EXTENSION_MS if impact is included_impacts[-1] else 0
-            start = max(0, impact.timestamp_ms - project.pre_roll_ms - extra_before) / 1_000
-            end = (
-                min(
-                    duration_ms,
-                    impact.timestamp_ms + project.post_roll_ms + extra_after,
-                )
-                / 1_000
-            )
+            start, end = _impact_bounds(project, impact, included_impacts, duration_ms)
             if end <= start:
                 continue
             filters.append(

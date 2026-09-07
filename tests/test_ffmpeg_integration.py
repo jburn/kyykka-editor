@@ -8,7 +8,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from kyykka_editor.model import EditorProject, Impact
-from kyykka_editor.render import render_highlights
+from kyykka_editor.render import estimate_export, render_highlights
 
 pytestmark = pytest.mark.integration
 
@@ -78,6 +78,9 @@ def test_real_render_is_windows_compatible_and_keeps_source_rate(
     streams = json.loads(probe.stdout)["streams"]
     video = next(stream for stream in streams if stream["codec_type"] == "video")
     audio = next(stream for stream in streams if stream["codec_type"] == "audio")
+    count, estimated_ms = estimate_export(project, 4_000)
+    assert count == 1
+    assert abs(float(video["duration"]) - estimated_ms / 1000) < 0.15
     assert video["codec_name"] == "h264"
     assert video["profile"] == "High"
     assert video["pix_fmt"] == "yuv420p"
