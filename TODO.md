@@ -3,4 +3,3 @@
 - Add hotkey for cycling through throwers
 - revise UI layout
 - Make hidden folder in the target folder for the temp files during rendering
-- Add option to cancel rendering

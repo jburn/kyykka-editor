@@ -116,3 +116,29 @@ def test_export_progress_state_is_restored(qapp: QApplication) -> None:
     assert window.export_progress.isHidden()
     assert window.export_status.isHidden()
     window.close()
+
+
+def test_render_dialog_cancel_stays_open_until_worker_finishes(qapp):
+    from kyykka_editor.app import RenderDialog, RenderThread
+
+    window = MainWindow()
+    dialog = RenderDialog(window)
+    worker = RenderThread(EditorProject(), Path("out.mp4"), 1000)
+    window.render_dialog = dialog
+    window.render_thread = worker
+    dialog.cancel_requested.connect(worker.cancel)
+    spy = QSignalSpy(dialog.cancel_requested)
+    dialog.show()
+    QTest.mouseClick(dialog.cancel_button, Qt.MouseButton.LeftButton)
+    assert worker.cancel_event.is_set()
+    assert dialog.isVisible()
+    assert not dialog.cancel_button.isEnabled()
+    dialog.reject()
+    assert spy.count() == 1
+    window._export_cancelled()
+    window._export_finished()
+    assert not dialog.isVisible()
+    assert window.render_thread is None
+    assert window.export_button.isEnabled()
+    assert window.statusBar().currentMessage() == "Export cancelled"
+    window.close()

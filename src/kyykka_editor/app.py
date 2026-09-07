@@ -5,6 +5,7 @@ import sys
 from collections.abc import Callable
 from copy import deepcopy
 from pathlib import Path
+from threading import Event
 
 os.environ.setdefault("QT_MEDIA_BACKEND", "ffmpeg")
 # Keep Qt Multimedia developer diagnostics disabled unless a caller explicitly enables them.
@@ -12,7 +13,7 @@ os.environ.setdefault("QT_FFMPEG_DEBUG", "0")
 os.environ.setdefault("QT_LOGGING_RULES", "qt.multimedia.ffmpeg.*=false")
 
 from PySide6.QtCore import QStandardPaths, Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QAction, QIcon, QKeySequence, QMouseEvent
+from PySide6.QtGui import QAction, QCloseEvent, QIcon, QKeySequence, QMouseEvent
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -44,7 +45,7 @@ from PySide6.QtWidgets import (
 
 from . import __version__
 from .model import EditorProject, default_export_filename, format_timestamp
-from .render import RenderError, render_highlights
+from .render import RenderCancelled, RenderError, render_highlights
 
 ICON_PATH = Path(__file__).with_name("assets") / "kyykka-editor.png"
 PROJECT_URL = "https://github.com/jburn/kyykka-editor"
@@ -241,19 +242,55 @@ class SeekSlider(QSlider):
         event.accept()
 
 
+class RenderDialog(QDialog):
+    cancel_requested = Signal()
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Rendering highlights")
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.setMinimumWidth(380)
+        layout = QVBoxLayout(self)
+        self.status = QLabel("Rendering video. This can take several minutes…")
+        layout.addWidget(self.status)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 0)
+        layout.addWidget(self.progress)
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self.reject)
+        layout.addWidget(self.cancel_button)
+
+    def reject(self) -> None:
+        if self.cancel_button.isEnabled():
+            self.cancel_button.setEnabled(False)
+            self.status.setText("Cancelling render…")
+            self.cancel_requested.emit()
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self.reject()
+        event.ignore()
+
+
 class RenderThread(QThread):
     succeeded = Signal(str)
     failed = Signal(str)
+    cancelled = Signal()
 
     def __init__(self, project: EditorProject, output: Path, duration_ms: int) -> None:
         super().__init__()
         self.project = project
         self.output = output
         self.duration_ms = duration_ms
+        self.cancel_event = Event()
+
+    def cancel(self) -> None:
+        self.cancel_event.set()
 
     def run(self) -> None:
         try:
-            render_highlights(self.project, self.output, self.duration_ms)
+            render_highlights(self.project, self.output, self.duration_ms, self.cancel_event)
+        except RenderCancelled:
+            self.cancelled.emit()
         except (RenderError, OSError) as error:
             self.failed.emit(str(error))
         else:
@@ -266,6 +303,8 @@ class MainWindow(QMainWindow):
         self.project = EditorProject()
         self.mark_history: list[int] = []
         self.render_thread: RenderThread | None = None
+        self.render_dialog: RenderDialog | None = None
+        self.render_outcome: tuple[str, str] | None = None
         self.setWindowTitle("Kyykkä Editor")
         self.setWindowIcon(QIcon(str(ICON_PATH)))
         self.resize(1180, 780)
@@ -587,6 +626,8 @@ class MainWindow(QMainWindow):
             self._load_video(Path(self.project.video_path))
 
     def export_video(self) -> None:
+        if self.render_thread is not None:
+            return
         self._sync_form()
         if not self.project.impacts:
             QMessageBox.information(
@@ -614,22 +655,55 @@ class MainWindow(QMainWindow):
         self.render_thread = RenderThread(snapshot, Path(filename), self.player.duration())
         self.render_thread.succeeded.connect(self._export_succeeded)
         self.render_thread.failed.connect(self._export_failed)
+        self.render_thread.cancelled.connect(self._export_cancelled)
         self.render_thread.finished.connect(self._export_finished)
+        self.render_outcome = None
+        self.render_dialog = RenderDialog(self)
+        self.render_dialog.cancel_requested.connect(self.render_thread.cancel)
+        self.render_dialog.show()
         self.render_thread.start()
 
     def _export_succeeded(self, filename: str) -> None:
-        self.statusBar().showMessage("Export complete", 5_000)
-        QMessageBox.information(self, "Export complete", f"Saved highlights to:\n{filename}")
+        self.render_outcome = ("success", filename)
 
     def _export_failed(self, message: str) -> None:
-        self.statusBar().clearMessage()
-        QMessageBox.critical(self, "Export failed", message)
+        self.render_outcome = ("error", message)
+
+    def _export_cancelled(self) -> None:
+        self.render_outcome = ("cancelled", "")
 
     def _export_finished(self) -> None:
+        if self.render_dialog is not None:
+            self.render_dialog.accept()
+            self.render_dialog.deleteLater()
+            self.render_dialog = None
+        if self.render_thread is not None:
+            self.render_thread.deleteLater()
+            self.render_thread = None
         self.export_button.setEnabled(True)
         self.export_button.setText("Export highlights…")
         self.export_progress.hide()
         self.export_status.hide()
+        outcome = self.render_outcome
+        self.render_outcome = None
+        if outcome is not None:
+            kind, message = outcome
+            if kind == "success":
+                self.statusBar().showMessage("Export complete", 5_000)
+                QMessageBox.information(self, "Export complete", f"Saved highlights to:\n{message}")
+            elif kind == "error":
+                self.statusBar().clearMessage()
+                QMessageBox.critical(self, "Export failed", message)
+            else:
+                self.statusBar().showMessage("Export cancelled", 5_000)
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        if self.render_thread is not None:
+            if self.render_dialog is not None:
+                self.render_dialog.reject()
+            event.ignore()
+            return
+        super().closeEvent(event)
 
 
 def main() -> int:

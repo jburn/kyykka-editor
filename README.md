@@ -20,6 +20,8 @@ a compact highlight video around those moments.
 - Optional persistent bottom-left thrower-name overlay on each marked highlight
 - Match setup dialog for title, video, teams, scores, and player rosters
 - FFmpeg-based highlight rendering
+- Rendering dialog with an activity indicator and cancellation; cancelled exports
+  clean up temporary files and preserve any existing destination video
 
 ## Requirements
 

@@ -7,6 +7,8 @@ import sys
 import uuid
 from fractions import Fraction
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from threading import Event
 
 from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen
@@ -21,6 +23,36 @@ CROSSFADE_SECONDS = 1.0
 
 class RenderError(RuntimeError):
     pass
+
+
+class RenderCancelled(RenderError):
+    pass
+
+
+def _run_render(command: list[str], cancel: Event) -> subprocess.CompletedProcess[str]:
+    if cancel.is_set():
+        raise RenderCancelled()
+    with subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        **_media_subprocess_options(),
+    ) as process:
+        while True:
+            try:
+                stdout, stderr = process.communicate(timeout=0.1)
+                break
+            except subprocess.TimeoutExpired:
+                if cancel.is_set():
+                    process.kill()
+                    process.communicate()
+                    raise RenderCancelled()
+    if cancel.is_set():
+        raise RenderCancelled()
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
 def _media_subprocess_options() -> dict[str, int]:
@@ -283,7 +315,36 @@ def build_intervals(project: EditorProject, duration_ms: int) -> list[tuple[floa
     return [(start / 1_000, end / 1_000) for start, end in intervals]
 
 
-def render_highlights(project: EditorProject, output_path: Path, duration_ms: int) -> None:
+def render_highlights(
+    project: EditorProject, output_path: Path, duration_ms: int, cancel: Event | None = None
+) -> None:
+    cancel = cancel if cancel is not None else Event()
+    if cancel.is_set():
+        raise RenderCancelled()
+    if Path(project.video_path).resolve() == output_path.resolve():
+        raise RenderError("The export file must be different from the source video")
+    # Publish only complete videos, preserving any previous export on cancellation.
+    with TemporaryDirectory(prefix=".kyykka-render-", dir=output_path.parent) as directory:
+        staged_output = Path(directory) / output_path.name
+        try:
+            _render_highlights(project, staged_output, duration_ms, cancel)
+        except RenderError:
+            log = staged_output.with_suffix(".ffmpeg-error.log")
+            if log.exists():
+                destination = output_path.with_suffix(".ffmpeg-error.log")
+                log.replace(destination)
+                raise RenderError(
+                    f"FFmpeg failed. Full log: {destination}\n{destination.read_text(encoding='utf-8')[-2000:]}"
+                ) from None
+            raise
+        if cancel.is_set():
+            raise RenderCancelled()
+        staged_output.replace(output_path)
+
+
+def _render_highlights(
+    project: EditorProject, output_path: Path, duration_ms: int, cancel: Event
+) -> None:
     """Render a title card followed by all marked highlight intervals."""
     ffmpeg = find_media_tool("ffmpeg")
     if not ffmpeg:
@@ -424,6 +485,8 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
 
     for group_index, impacts in enumerate(impact_groups):
         for impact in impacts:
+            if cancel.is_set():
+                raise RenderCancelled()
             extra_before = EDGE_CLIP_EXTENSION_MS if impact is included_impacts[0] else 0
             extra_after = EDGE_CLIP_EXTENSION_MS if impact is included_impacts[-1] else 0
             start = max(0, impact.timestamp_ms - project.pre_roll_ms - extra_before) / 1_000
@@ -555,15 +618,7 @@ def render_highlights(project: EditorProject, output_path: Path, duration_ms: in
         ]
     )
     try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-            **_media_subprocess_options(),
-        )
+        result = _run_render(command, cancel)
     finally:
         for temporary_path in temporary_paths:
             temporary_path.unlink(missing_ok=True)

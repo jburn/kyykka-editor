@@ -200,12 +200,13 @@ def test_render_command_preserves_rate_and_requests_windows_compatible_video(
         lambda _name, path, _size: path.touch(),
     )
 
-    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(command: list[str], _cancel: object) -> subprocess.CompletedProcess[str]:
         captured.extend(command)
-        captured_options.update(_kwargs)
+        captured_options.update(render_module._media_subprocess_options())
+        Path(command[-1]).touch()
         return subprocess.CompletedProcess(command, 0, "", "")
 
-    monkeypatch.setattr("kyykka_editor.render.subprocess.run", fake_run)
+    monkeypatch.setattr("kyykka_editor.render._run_render", fake_run)
     render_highlights(project, output, 12_000)
 
     command = " ".join(captured)
@@ -239,10 +240,60 @@ def test_failed_render_writes_diagnostic_log_and_cleans_temporary_files(
         "kyykka_editor.render.create_title_card", lambda _project, path, _size: path.touch()
     )
     monkeypatch.setattr(
-        "kyykka_editor.render.subprocess.run",
+        "kyykka_editor.render._run_render",
         lambda *_args, **_kwargs: subprocess.CompletedProcess([], 1, "", "encoder exploded"),
     )
     with pytest.raises(RenderError, match="encoder exploded"):
         render_highlights(project, output, 10_000)
     assert output.with_suffix(".ffmpeg-error.log").read_text(encoding="utf-8") == "encoder exploded"
     assert not list(tmp_path.glob(".kyykka-*.png"))
+
+
+def test_cancel_stops_process_and_drains_pipes(monkeypatch):
+    from threading import Event
+
+    cancel = Event()
+
+    class Process:
+        killed = False
+        drained = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def communicate(self, timeout=None):
+            if timeout is not None:
+                cancel.set()
+                raise subprocess.TimeoutExpired("ffmpeg", timeout)
+            self.drained = True
+            return "", ""
+
+        def kill(self):
+            self.killed = True
+
+    process = Process()
+    monkeypatch.setattr(render_module.subprocess, "Popen", lambda *a, **kw: process)
+    with pytest.raises(render_module.RenderCancelled):
+        render_module._run_render(["ffmpeg"], cancel)
+    assert process.killed and process.drained
+
+
+def test_cancel_preserves_existing_export_and_removes_temporary_files(tmp_path, monkeypatch):
+    from threading import Event
+
+    output = tmp_path / "highlights.mp4"
+    output.write_bytes(b"previous export")
+
+    def cancel_render(project, staged, duration, cancel):
+        staged.write_bytes(b"partial video")
+        (staged.parent / "overlay.png").touch()
+        raise render_module.RenderCancelled()
+
+    monkeypatch.setattr(render_module, "_render_highlights", cancel_render)
+    with pytest.raises(render_module.RenderCancelled):
+        render_highlights(EditorProject(video_path="source.mp4"), output, 10000, Event())
+    assert output.read_bytes() == b"previous export"
+    assert list(tmp_path.iterdir()) == [output]
