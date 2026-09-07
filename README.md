@@ -18,6 +18,7 @@ a compact highlight video around those moments.
 - Title screen using the match title and team names
 - Timeline events for the round-one result and final result/winner screens
 - Optional persistent bottom-left thrower-name overlay on each marked highlight
+- Live bottom-left playback overlay showing the currently selected thrower
 - Match setup dialog for title, video, teams, scores, and player rosters
 - FFmpeg-based highlight rendering
 - Rendering dialog with an activity indicator and cancellation; cancelled exports

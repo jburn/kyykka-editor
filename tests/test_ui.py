@@ -9,6 +9,36 @@ from kyykka_editor.app import PROJECT_URL, AboutDialog, MainWindow, ProjectDialo
 from kyykka_editor.model import EditorProject, Impact
 
 
+def test_video_overlay_tracks_selection_and_stays_inside_video(qapp: QApplication) -> None:
+    from PySide6.QtGui import QColor, QImage
+    from PySide6.QtMultimedia import QVideoFrame
+
+    window = MainWindow()
+    window.project.team_one_players = ["Alice", "Bob"]
+    window._load_form()
+    window.show()
+    frame = QImage(320, 180, QImage.Format.Format_RGB32)
+    frame.fill(QColor("blue"))
+    window.video.video_item.videoSink().setVideoFrame(QVideoFrame(frame))
+    qapp.processEvents()
+    assert not window.video.overlay.isVisible()
+    window.cycle_thrower()
+    assert window.video.name_item.text() == "Alice"
+    assert window.video.overlay.isVisible()
+    window.thrower_combo.setCurrentIndex(2)
+    assert window.video.name_item.text() == "Bob"
+    for width, height in [(1000, 700), (1400, 900)]:
+        window.resize(width, height)
+        qapp.processEvents()
+        video_bounds = window.video.video_item.boundingRect()
+        overlay_bounds = window.video.overlay.mapRectToParent(window.video.overlay.rect())
+        assert video_bounds.contains(overlay_bounds)
+        assert overlay_bounds.center().y() > video_bounds.center().y()
+    window.cycle_thrower()
+    assert not window.video.overlay.isVisible()
+    window.close()
+
+
 def test_project_dialog_applies_match_details(qapp: QApplication, tmp_path: Path) -> None:
     project = EditorProject()
     dialog = ProjectDialog(project)

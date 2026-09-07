@@ -1,5 +1,3 @@
 - Add end user instructions behind top bar menu
-- Make team member insertion boxes smaller (8 or so rows)
 - revise UI layout
-- Make hidden folder in the target folder for the temp files during rendering
 - Add finnish language support + language configuration

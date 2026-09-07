@@ -12,10 +12,22 @@ os.environ.setdefault("QT_MEDIA_BACKEND", "ffmpeg")
 os.environ.setdefault("QT_FFMPEG_DEBUG", "0")
 os.environ.setdefault("QT_LOGGING_RULES", "qt.multimedia.ffmpeg.*=false")
 
-from PySide6.QtCore import QStandardPaths, Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QAction, QCloseEvent, QIcon, QKeySequence, QMouseEvent
+from PySide6.QtCore import QRectF, QSizeF, QStandardPaths, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtGui import (
+    QAction,
+    QBrush,
+    QCloseEvent,
+    QColor,
+    QFont,
+    QFontMetrics,
+    QIcon,
+    QKeySequence,
+    QMouseEvent,
+    QPen,
+    QResizeEvent,
+)
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
-from PySide6.QtMultimediaWidgets import QVideoWidget
+from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -23,6 +35,10 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QGraphicsRectItem,
+    QGraphicsScene,
+    QGraphicsSimpleTextItem,
+    QGraphicsView,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -302,6 +318,71 @@ class RenderThread(QThread):
             self.succeeded.emit(str(self.output))
 
 
+class VideoPreview(QGraphicsView):
+    """Compose the video and editing overlay in the same graphics scene."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setScene(QGraphicsScene(self))
+        self.setBackgroundBrush(QBrush(QColor("black")))
+        self.setFrameShape(QGraphicsView.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setMinimumSize(160, 90)
+        self.video_item = QGraphicsVideoItem()
+        self.scene().addItem(self.video_item)
+        self.overlay = QGraphicsRectItem(self.video_item)
+        self.overlay.setBrush(QBrush(QColor(0, 0, 0, 150)))
+        self.overlay.setPen(QPen(Qt.PenStyle.NoPen))
+        self.overlay.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self.name_item = QGraphicsSimpleTextItem(self.overlay)
+        self.name_item.setBrush(QBrush(QColor("white")))
+        self.name_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self.thrower = ""
+        self.overlay.hide()
+        self.video_item.nativeSizeChanged.connect(self._layout_video)
+
+    def set_thrower(self, name: str) -> None:
+        self.thrower = name
+        self._layout_video()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._layout_video()
+
+    def _layout_video(self) -> None:
+        available = QSizeF(self.viewport().size())
+        native = self.video_item.nativeSize()
+        size = (
+            native.scaled(available, Qt.AspectRatioMode.KeepAspectRatio)
+            if not native.isEmpty()
+            else available
+        )
+        self.setSceneRect(QRectF(0, 0, available.width(), available.height()))
+        self.video_item.setSize(size)
+        self.video_item.setPos(
+            (available.width() - size.width()) / 2, (available.height() - size.height()) / 2
+        )
+        font = QFont("Arial")
+        font.setPixelSize(max(12, round(size.height() / 24)))
+        font.setBold(True)
+        self.name_item.setFont(font)
+        margin = max(6, round(size.width() / 40))
+        padding = 8
+        text = QFontMetrics(font).elidedText(
+            self.thrower,
+            Qt.TextElideMode.ElideRight,
+            max(0, round(size.width()) - 2 * (margin + padding)),
+        )
+        self.name_item.setText(text)
+        self.name_item.setPos(padding, padding)
+        bounds = self.name_item.boundingRect()
+        height = bounds.height() + 2 * padding
+        self.overlay.setRect(0, 0, bounds.width() + 2 * padding, height)
+        self.overlay.setPos(margin, max(0, size.height() - height - margin))
+        self.overlay.setVisible(bool(self.thrower))
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -317,8 +398,8 @@ class MainWindow(QMainWindow):
         self.player = QMediaPlayer(self)
         self.audio = QAudioOutput(self)
         self.player.setAudioOutput(self.audio)
-        self.video = QVideoWidget()
-        self.player.setVideoOutput(self.video)
+        self.video = VideoPreview()
+        self.player.setVideoOutput(self.video.video_item)
 
         self._build_ui()
         self._build_menu()
@@ -386,10 +467,11 @@ class MainWindow(QMainWindow):
 
         thrower_form = QFormLayout()
         self.thrower_combo = QComboBox()
+        self.thrower_combo.currentTextChanged.connect(self.video.set_thrower)
         thrower_field = QVBoxLayout()
         thrower_field.setSpacing(2)
         thrower_field.addWidget(self.thrower_combo)
-        self.thrower_shortcut_hint = QLabel(", next · . previous")
+        self.thrower_shortcut_hint = QLabel(",=next  .=previous")
         hint_font = self.thrower_shortcut_hint.font()
         hint_font.setPointSizeF(max(8.0, hint_font.pointSizeF() - 1.0))
         self.thrower_shortcut_hint.setFont(hint_font)
