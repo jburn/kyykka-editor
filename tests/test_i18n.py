@@ -33,12 +33,14 @@ def test_language_persistence_and_invalid_setting(tmp_path):
 
 
 def test_live_language_switch_preserves_match_and_shortcuts(qapp, monkeypatch, tmp_path):
+    monkeypatch.setattr("kyykka_editor.app.load_bindings", lambda defaults: defaults)
     settings = QSettings(str(tmp_path / "language.ini"), QSettings.Format.IniFormat)
     monkeypatch.setattr(
         "kyykka_editor.app.set_language",
         lambda code, persist: i18n.set_language(code, persist=persist, settings=settings),
     )
     window = MainWindow()
+    previous_shortcut = window.shortcut_actions[","].shortcut().toString()
     window.project = EditorProject(
         title="Play",
         team_one="Team 1",
@@ -68,7 +70,7 @@ def test_live_language_switch_preserves_match_and_shortcuts(qapp, monkeypatch, t
     assert window.impact_table.item(1, 0).text() == "1. puolen loppu"
     assert window.impact_table.item(2, 0).text() == "Ottelun loppu"
     assert "1 heitto" in window.export_summary.text()
-    assert window.shortcut_actions[","].shortcut().toString() == ","
+    assert window.shortcut_actions[","].shortcut().toString() == previous_shortcut
     window.thrower_combo.setFocus()
     QTest.keyClick(window.thrower_combo, Qt.Key.Key_Comma)
     assert window.thrower_combo.currentText() == "Ääkkönen"
