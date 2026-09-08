@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from collections.abc import Callable
 from copy import deepcopy
@@ -13,7 +14,17 @@ os.environ.setdefault("QT_MEDIA_BACKEND", "ffmpeg")
 os.environ.setdefault("QT_FFMPEG_DEBUG", "0")
 os.environ.setdefault("QT_LOGGING_RULES", "qt.multimedia.ffmpeg.*=false")
 
-from PySide6.QtCore import QRectF, QSizeF, QStandardPaths, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtCore import (
+    QPoint,
+    QRectF,
+    QSizeF,
+    QStandardPaths,
+    Qt,
+    QThread,
+    QTimer,
+    QUrl,
+    Signal,
+)
 from PySide6.QtGui import (
     QAction,
     QActionGroup,
@@ -48,6 +59,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
@@ -236,6 +248,86 @@ class ProjectDialog(QDialog):
     @staticmethod
     def _players(editor: QPlainTextEdit) -> list[str]:
         return [line.strip() for line in editor.toPlainText().splitlines() if line.strip()]
+
+
+class EditMarkDialog(QDialog):
+    def __init__(
+        self,
+        timestamp_ms: int,
+        position_ms: int,
+        minimum_ms: int,
+        maximum_ms: int,
+        players: list[str],
+        thrower: str | None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(tr("Edit throw") if thrower is not None else tr("Edit event"))
+        self.minimum_ms, self.maximum_ms = minimum_ms, maximum_ms
+        form = QFormLayout(self)
+        self.timestamp_edit = QLineEdit(format_timestamp(timestamp_ms))
+        self.timestamp_edit.setMaxLength(
+            max(len(format_timestamp(timestamp_ms)), len(format_timestamp(maximum_ms)))
+        )
+        form.addRow(tr("Timestamp"), self.timestamp_edit)
+        self.use_position_button = QPushButton(tr("Use current playback position"))
+        self.use_position_button.clicked.connect(
+            lambda: self.timestamp_edit.setText(format_timestamp(position_ms))
+        )
+        form.addRow(self.use_position_button)
+        self.thrower_combo: QComboBox | None = None
+        if thrower is not None:
+            self.thrower_combo = QComboBox()
+            self.thrower_combo.addItems(list(dict.fromkeys(["", *players])))
+            if self.thrower_combo.findText(thrower) < 0:
+                self.thrower_combo.addItem(thrower)
+            self.thrower_combo.setCurrentText(thrower)
+            form.addRow(tr("Thrower"), self.thrower_combo)
+        self.validation_label = QLabel(
+            tr(
+                "Enter a timestamp between {start} and {end} (hh:mm:ss.mmm).",
+                start=format_timestamp(minimum_ms),
+                end=format_timestamp(maximum_ms),
+            )
+        )
+        self.validation_label.setWordWrap(True)
+        error_color = "#e58b8b" if self.palette().window().color().lightness() < 128 else "#b44747"
+        self.validation_label.setStyleSheet(f"color: {error_color};")
+        validation_policy = self.validation_label.sizePolicy()
+        validation_policy.setRetainSizeWhenHidden(True)
+        self.validation_label.setSizePolicy(validation_policy)
+        validation_area = QWidget()
+        validation_layout = QVBoxLayout(validation_area)
+        validation_layout.setContentsMargins(0, 0, 0, 0)
+        validation_layout.addWidget(self.validation_label)
+        form.addRow(validation_area)
+        self.buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
+        )
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        form.addRow(self.buttons)
+        self.timestamp_edit.textChanged.connect(self._validate)
+        self._validate()
+
+    def timestamp_ms(self) -> int | None:
+        if not re.fullmatch(
+            r"[0-9]{2,}:[0-5][0-9]:[0-5][0-9]\.[0-9]{3}", self.timestamp_edit.text()
+        ):
+            return None
+        hours, minutes, seconds = self.timestamp_edit.text().split(":")
+        seconds, millis = seconds.split(".")
+        value = ((int(hours) * 60 + int(minutes)) * 60 + int(seconds)) * 1000 + int(millis)
+        return value if self.minimum_ms <= value <= self.maximum_ms else None
+
+    def _validate(self) -> None:
+        valid = self.timestamp_ms() is not None
+        self.buttons.button(QDialogButtonBox.StandardButton.Save).setEnabled(valid)
+        self.validation_label.setVisible(not valid)
+
+    def accept(self) -> None:
+        if self.timestamp_ms() is not None:
+            super().accept()
 
 
 class SeekSlider(QSlider):
@@ -516,8 +608,12 @@ class MainWindow(QMainWindow):
         self.impact_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         right.addWidget(self.impact_table, 1)
         self.remove_button = QPushButton(tr("Remove selected"))
+        self.edit_button = QPushButton(tr("Edit selected…"))
         self.export_button = QPushButton(tr("Export highlights…"))
-        right.addWidget(self.remove_button)
+        edit_row = QHBoxLayout()
+        edit_row.addWidget(self.edit_button)
+        edit_row.addWidget(self.remove_button)
+        right.addLayout(edit_row)
         self.export_summary = QLabel()
         self.export_summary.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.export_summary.setWordWrap(True)
@@ -541,6 +637,7 @@ class MainWindow(QMainWindow):
         self.mark_button.clicked.connect(self.mark_impact)
         self.undo_button.clicked.connect(self.undo_impact)
         self.remove_button.clicked.connect(self.remove_selected)
+        self.edit_button.clicked.connect(self.edit_selected)
         self.export_button.clicked.connect(self.export_video)
         self.pre_roll.valueChanged.connect(self._refresh_export_summary)
         self.post_roll.valueChanged.connect(self._refresh_export_summary)
@@ -550,6 +647,8 @@ class MainWindow(QMainWindow):
         self.slider.seek_requested.connect(self.player.setPosition)
         self.impact_table.cellDoubleClicked.connect(self._seek_to_row)
         self.impact_table.itemSelectionChanged.connect(self._update_action_states)
+        self.impact_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.impact_table.customContextMenuRequested.connect(self._timeline_context_menu)
 
         for text, keys, callback in (
             ("Play or pause", "Space", self.toggle_playback),
@@ -560,6 +659,7 @@ class MainWindow(QMainWindow):
             ("Seek backward 3 seconds", "Left", lambda: self.seek_relative(-3_000)),
             ("Seek forward 5 seconds", "Right", lambda: self.seek_relative(5_000)),
             ("Remove selected event", "Delete", self.remove_selected),
+            ("Edit selected event", "E", self.edit_selected),
             ("Mark round 1 end", "Ctrl+R", self.mark_round_end),
             ("Mark game end", "Ctrl+G", self.mark_game_end),
         ):
@@ -618,6 +718,7 @@ class MainWindow(QMainWindow):
             (self.game_end_button, "Mark game end"),
             (self.timeline_label, "Timeline events"),
             (self.remove_button, "Remove selected"),
+            (self.edit_button, "Edit selected…"),
             (self.export_button, "Export highlights…"),
             (self.about_action, "&About Kyykkä Editor…"),
         ):
@@ -781,6 +882,83 @@ class MainWindow(QMainWindow):
                 break
         self._refresh_impacts()
 
+    def _timeline_context_menu(self, position: QPoint) -> None:
+        item = self.impact_table.itemAt(position)
+        if item is None:
+            return
+        if not item.isSelected():
+            self.impact_table.selectRow(item.row())
+        self._update_action_states()
+        menu = QMenu(self)
+        menu.addAction(self.shortcut_actions["E"])
+        menu.addAction(self.shortcut_actions["Delete"])
+        try:
+            menu.exec(self.impact_table.viewport().mapToGlobal(position))
+        finally:
+            menu.deleteLater()
+
+    def edit_selected(self) -> None:
+        if not self.edit_button.isEnabled():
+            return
+        row = self.impact_table.selectedIndexes()[0].row()
+        kind, timestamp, source_index = self._timeline_items()[row]
+        impact = self.project.impacts[source_index] if source_index is not None else None
+        minimum, maximum = 0, self.player.duration()
+        if kind == "Round 1 end" and self.project.game_end_ms is not None:
+            maximum = min(maximum, self.project.game_end_ms)
+        elif kind == "Game end" and self.project.round_one_end_ms is not None:
+            minimum = self.project.round_one_end_ms
+        was_playing = self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        position = self.player.position()
+        self.player.pause()
+        try:
+            dialog = EditMarkDialog(
+                timestamp,
+                position,
+                minimum,
+                maximum,
+                self.project.team_one_players + self.project.team_two_players,
+                impact.thrower if impact is not None else None,
+                self,
+            )
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            updated_timestamp = dialog.timestamp_ms()
+            if updated_timestamp is None:
+                return
+            if impact is not None:
+                assert dialog.thrower_combo is not None
+                updated_thrower = dialog.thrower_combo.currentText()
+                if (updated_timestamp, updated_thrower) == (impact.timestamp_ms, impact.thrower):
+                    return
+                impact.timestamp_ms = updated_timestamp
+                impact.thrower = updated_thrower
+                self.project.impacts.sort()
+            elif kind == "Round 1 end":
+                if updated_timestamp == timestamp:
+                    return
+                self.project.round_one_end_ms = updated_timestamp
+            else:
+                if updated_timestamp == timestamp:
+                    return
+                self.project.game_end_ms = updated_timestamp
+            # Existing undo tracks timestamps of newly added marks, not edits.
+            self.mark_history.clear()
+            self._refresh_impacts()
+            self.impact_table.clearSelection()
+            for row, (event_kind, _, index) in enumerate(self._timeline_items()):
+                if (
+                    impact is not None
+                    and index is not None
+                    and self.project.impacts[index] is impact
+                ) or (impact is None and event_kind == kind):
+                    self.impact_table.selectRow(row)
+                    self.impact_table.scrollToItem(self.impact_table.item(row, 0))
+                    break
+        finally:
+            if was_playing:
+                self.player.play()
+
     def remove_selected(self) -> None:
         timeline = self._timeline_items()
         rows = sorted({index.row() for index in self.impact_table.selectedIndexes()})
@@ -898,6 +1076,13 @@ class MainWindow(QMainWindow):
             ),
             ("Ctrl+Z", self.undo_button, idle and bool(self.mark_history)),
             ("Delete", self.remove_button, idle and bool(self.impact_table.selectedIndexes())),
+            (
+                "E",
+                self.edit_button,
+                idle
+                and ready
+                and len({index.row() for index in self.impact_table.selectedIndexes()}) == 1,
+            ),
         )
         for keys, button, enabled in states:
             button.setEnabled(enabled)

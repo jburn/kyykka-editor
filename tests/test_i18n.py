@@ -83,6 +83,8 @@ def test_live_language_switch_preserves_match_and_shortcuts(qapp, monkeypatch, t
 
 
 def test_finnish_dialogs_and_standard_buttons(qapp):
+    from kyykka_editor.app import EditMarkDialog
+
     i18n.set_language("fi")
     dialog = ProjectDialog(EditorProject(title="Play", team_one_players=["Team 1"]))
     assert dialog.windowTitle() == "Ottelun tiedot"
@@ -98,6 +100,10 @@ def test_finnish_dialogs_and_standard_buttons(qapp):
     assert render.cancel_button.text() == "Peruuta"
     render.reject()
     assert render.status.text() == "Peruutetaan videon luontia…"
+    edit = EditMarkDialog(1000, 2000, 0, 10000, ["Ääkkönen"], "Ääkkönen")
+    assert edit.windowTitle() == "Muokkaa heittoa"
+    assert edit.use_position_button.text() == "Käytä nykyistä toistokohtaa"
+    assert edit.thrower_combo.currentText() == "Ääkkönen"
 
 
 def test_finnish_export_cards_and_errors(qapp, tmp_path, monkeypatch):

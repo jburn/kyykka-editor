@@ -138,7 +138,17 @@ Open **Help → Hotkeys** to see all editor shortcuts.
 | Seek backward 3 seconds | -3 s | Left arrow |
 | Seek forward 5 seconds | +5 s | Right arrow |
 | Remove selected mark | Remove | Delete |
+| Edit selected event | Edit selected… | E |
 
 Primary actions are available through visible controls; shortcuts are supporting controls.
 Thrower cycling follows dropdown order and wraps in either direction, including
 the blank selection.
+
+Select one timeline entry and choose **Edit selected…** (E) to correct its
+timestamp or assigned thrower. End markers have a timestamp only. **Use current
+playback position** copies the position at which you opened the dialog. Saving
+keeps events in chronological order; Cancel leaves the entry unchanged.
+Double-clicking an entry still seeks to it. Saving an edit clears the existing
+mark-undo history; undoing edits is not yet supported.
+Right-click a timeline entry to access Edit and Remove. Timestamp guidance is
+shown only while the entered value is invalid.

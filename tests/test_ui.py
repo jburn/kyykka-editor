@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from PySide6.QtCore import QPoint, Qt, QUrl
 from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtTest import QSignalSpy, QTest
@@ -8,6 +9,199 @@ from PySide6.QtWidgets import QApplication
 from kyykka_editor import __version__
 from kyykka_editor.app import PROJECT_URL, AboutDialog, MainWindow, ProjectDialog, SeekSlider
 from kyykka_editor.model import EditorProject, Impact
+
+
+def test_edit_dialog_validates_time_and_preserves_unlisted_thrower(qapp):
+    from PySide6.QtWidgets import QDialogButtonBox
+
+    from kyykka_editor.app import EditMarkDialog
+
+    dialog = EditMarkDialog(1234, 5678, 1000, 10000, ["Alice"], "Former player")
+    assert dialog.thrower_combo.currentText() == "Former player"
+    assert dialog.validation_label.isHidden()
+    save = dialog.buttons.button(QDialogButtonBox.StandardButton.Save)
+    for text in ("00:00:00.999", "00:00:10.001", "00:60:00.000", "incomplete"):
+        dialog.timestamp_edit.setText(text)
+        assert not save.isEnabled()
+        assert dialog.timestamp_ms() is None
+        assert not dialog.validation_label.isHidden()
+    dialog.use_position_button.click()
+    assert dialog.timestamp_ms() == 5678
+    assert save.isEnabled()
+    assert dialog.validation_label.isHidden()
+    dialog.thrower_combo.setCurrentIndex(0)
+    assert dialog.thrower_combo.currentText() == ""
+
+
+def test_timestamp_allows_deleting_and_retyping_in_middle(qapp):
+    from PySide6.QtWidgets import QDialogButtonBox
+
+    from kyykka_editor.app import EditMarkDialog
+
+    dialog = EditMarkDialog(1234, 0, 0, 10000, [], None)
+    editor = dialog.timestamp_edit
+    save = dialog.buttons.button(QDialogButtonBox.StandardButton.Save)
+    editor.setCursorPosition(8)
+    QTest.keyClick(editor, Qt.Key.Key_Backspace)
+    assert editor.text() == "00:00:0.234"
+    assert not save.isEnabled()
+    QTest.keyClicks(editor, "2")
+    assert editor.text() == "00:00:02.234"
+    assert dialog.timestamp_ms() == 2234
+    assert save.isEnabled()
+    assert dialog.validation_label.isHidden()
+    editor.setCursorPosition(2)
+    QTest.keyClick(editor, Qt.Key.Key_Delete)
+    assert editor.text() == "0000:02.234"
+    assert not save.isEnabled()
+    QTest.keyClicks(editor, ":")
+    assert dialog.timestamp_ms() == 2234
+    assert save.isEnabled()
+
+
+def test_timeline_context_menu_targets_clicked_entry(qapp, monkeypatch):
+    from PySide6.QtWidgets import QMenu
+
+    window = MainWindow()
+    _set_ready_video(window, monkeypatch)
+    window.project.impacts = [Impact(1000, "Alice"), Impact(2000, "Bob")]
+    window._refresh_impacts()
+    window.show()
+    qapp.processEvents()
+    window.impact_table.selectRow(0)
+    calls = []
+
+    def show_menu(menu, position):
+        assert menu.actions() == [window.shortcut_actions["E"], window.shortcut_actions["Delete"]]
+        assert all(action.isEnabled() for action in menu.actions())
+        assert {index.row() for index in window.impact_table.selectedIndexes()} == {1}
+        calls.append(position)
+        menu.actions()[1].trigger()
+
+    class TestMenu(QMenu):
+        def exec(self, position):
+            show_menu(self, position)
+
+    monkeypatch.setattr("kyykka_editor.app.QMenu", TestMenu)
+    position = window.impact_table.visualItemRect(window.impact_table.item(1, 0)).center()
+    window.impact_table.customContextMenuRequested.emit(position)
+    assert len(calls) == 1
+    assert [impact.thrower for impact in window.project.impacts] == ["Alice"]
+    window._timeline_context_menu(QPoint(-1, -1))
+    assert len(calls) == 1
+    window.close()
+
+
+def test_edit_throw_reorders_exact_entry_and_preserves_current_thrower(qapp, monkeypatch):
+    from kyykka_editor.app import EditMarkDialog
+
+    window = MainWindow()
+    _set_ready_video(window, monkeypatch)
+    first, edited = Impact(1000, "Alice"), Impact(1000, "Bob")
+    window.project.impacts = [first, edited, Impact(5000, "Alice")]
+    window.project.team_one_players = ["Alice", "Bob"]
+    window.thrower_combo.addItems(["", "Alice", "Bob"])
+    window.thrower_combo.setCurrentText("Alice")
+    window.mark_history = [1000]
+    window._refresh_impacts()
+    window.impact_table.selectRow(1)
+    assert window.edit_button.isEnabled()
+    assert window.shortcut_actions["E"].isEnabled()
+
+    def edit(dialog):
+        dialog.timestamp_edit.setText("00:00:07.123")
+        dialog.thrower_combo.setCurrentText("Alice")
+        dialog.accept()
+        return dialog.result()
+
+    monkeypatch.setattr(EditMarkDialog, "exec", edit)
+    window.show()
+    window.activateWindow()
+    window.impact_table.setFocus()
+    qapp.processEvents()
+    QTest.keyClick(window.impact_table, Qt.Key.Key_E)
+    assert first.timestamp_ms == 1000
+    assert window.project.impacts[-1] is edited
+    assert (edited.timestamp_ms, edited.thrower) == (7123, "Alice")
+    assert {index.row() for index in window.impact_table.selectedIndexes()} == {2}
+    assert window.thrower_combo.currentText() == "Alice"
+    assert window.video.name_item.text() == "Alice"
+    assert not window.mark_history
+    window.close()
+
+
+@pytest.mark.parametrize("accepted", [False, True])
+def test_cancel_or_unchanged_edit_preserves_history(qapp, monkeypatch, accepted):
+    from PySide6.QtWidgets import QDialog
+
+    from kyykka_editor.app import EditMarkDialog
+
+    window = MainWindow()
+    _set_ready_video(window, monkeypatch)
+    window.mark_impact()
+    window.impact_table.selectRow(0)
+    previous = list(window.mark_history)
+    monkeypatch.setattr(
+        EditMarkDialog,
+        "exec",
+        lambda _: QDialog.DialogCode.Accepted if accepted else QDialog.DialogCode.Rejected,
+    )
+    window.edit_selected()
+    assert window.mark_history == previous
+    assert window.project.impacts[0].timestamp_ms == 0
+    window.close()
+
+
+def test_edit_pauses_and_restores_playback(qapp, monkeypatch):
+    from kyykka_editor.app import EditMarkDialog
+
+    window = MainWindow()
+    _set_ready_video(window, monkeypatch)
+    window.mark_impact()
+    window.impact_table.selectRow(0)
+    calls = []
+    monkeypatch.setattr(
+        window.player, "playbackState", lambda: QMediaPlayer.PlaybackState.PlayingState
+    )
+    monkeypatch.setattr(window.player, "pause", lambda: calls.append("pause"))
+    monkeypatch.setattr(window.player, "play", lambda: calls.append("play"))
+    monkeypatch.setattr(EditMarkDialog, "exec", lambda _: 0)
+    window.edit_selected()
+    assert calls == ["pause", "play"]
+    window.close()
+
+
+@pytest.mark.parametrize(
+    "kind, row, expected_min, expected_max, value",
+    [
+        ("round_one_end_ms", 0, 0, 8000, 4000),
+        ("game_end_ms", 1, 3000, 10000, 9000),
+    ],
+)
+def test_edit_end_markers_enforces_order(
+    qapp, monkeypatch, kind, row, expected_min, expected_max, value
+):
+    from kyykka_editor.app import EditMarkDialog
+    from kyykka_editor.model import format_timestamp
+
+    window = MainWindow()
+    _set_ready_video(window, monkeypatch)
+    window.project.round_one_end_ms = 3000
+    window.project.game_end_ms = 8000
+    window._refresh_impacts()
+    window.impact_table.selectRow(row)
+
+    def edit(dialog):
+        assert dialog.thrower_combo is None
+        assert (dialog.minimum_ms, dialog.maximum_ms) == (expected_min, expected_max)
+        dialog.timestamp_edit.setText(format_timestamp(value))
+        dialog.accept()
+        return dialog.result()
+
+    monkeypatch.setattr(EditMarkDialog, "exec", edit)
+    window.edit_selected()
+    assert getattr(window.project, kind) == value
+    window.close()
 
 
 def test_video_overlay_tracks_selection_and_stays_inside_video(qapp: QApplication) -> None:

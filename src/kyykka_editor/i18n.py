@@ -9,6 +9,13 @@ _language = "en"
 _qt_translator: QTranslator | None = None
 
 FINNISH = {
+    "Edit throw": "Muokkaa heittoa",
+    "Edit event": "Muokkaa tapahtumaa",
+    "Edit selected…": "Muokkaa valittua…",
+    "Edit selected event": "Muokkaa valittua tapahtumaa",
+    "Thrower": "Heittäjä",
+    "Use current playback position": "Käytä nykyistä toistokohtaa",
+    "Enter a timestamp between {start} and {end} (hh:mm:ss.mmm).": "Anna aikaleima väliltä {start}-{end} (tt:mm:ss.mmm).",
     "Kyykkä Editor\nCopyright © 2026 jburn and contributors.\nLicensed under the GNU General Public License, version 3 or later (GPL-3.0-or-later). You may use, study, share, and modify the application under those terms. There is no warranty. See LICENSE in the application directory for the complete license.\n\nFFmpeg and FFprobe\nThe packaged Gyan full build is GPL-enabled. The exact obligations depend on the included build. See THIRD_PARTY_NOTICES.md in the application directory.\n\nPySide6 / Qt for Python\nAvailable under LGPLv3, GPLv3, and commercial licensing terms.": "Kyykkä Editor\nTekijänoikeus © 2026 jburn ja muut tekijät.\nSovellus on lisensoitu GNU General Public License -lisenssin versiolla 3 tai uudemmalla (GPL-3.0-or-later). Saat käyttää, tutkia, jakaa ja muokata sovellusta lisenssin ehtojen mukaisesti. Sovelluksella ei ole takuuta. Koko lisenssi on sovelluksen hakemiston LICENSE-tiedostossa.\n\nFFmpeg ja FFprobe\nPaketoitu Gyan-kooste käyttää GPL-lisenssiä. Tarkat velvoitteet riippuvat mukana toimitetusta koosteesta. Katso sovelluksen hakemiston THIRD_PARTY_NOTICES.md.\n\nPySide6 / Qt for Python\nSaatavilla LGPLv3-, GPLv3- ja kaupallisilla lisenssiehdoilla.",
     "About Kyykkä Editor": "Tietoja Kyykkä Editorista",
     "Packaged Windows application": "Paketoitu Windows-sovellus",
