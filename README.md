@@ -1,7 +1,7 @@
 # Kyykkä Editor
 
 A desktop application for marking impacts in a kyykkä match video and rendering
-a compact highlight video around those moments. Made explicitly to be a kyykkä video editor.
+a compact highlight video around those moments. Made explicitly for editing kyykkä videos.
 
 # Easy and fast workflow
 1. Select a video file and insert match details like teams/players, title and scores
