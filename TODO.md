@@ -1,5 +1,4 @@
 - Save/load projects, with autosave recovery
-- Edit existing marks
 - Show throw markers on playback slider
 - Display actual rendering progress
 - Per throw timing overrides

@@ -271,6 +271,94 @@ def test_about_dialog_contains_version_license_and_contact(qapp: QApplication) -
     assert dialog.license_text.isReadOnly()
 
 
+def test_slider_draws_throw_markers_and_keeps_click_seeking(qapp):
+    slider = SeekSlider(Qt.Orientation.Horizontal)
+    slider.resize(400, 28)
+    slider.setRange(0, 10000)
+    slider.set_markers([0, 5000, 10000, 5000, 15000])
+    slider.show()
+    qapp.processEvents()
+    positions = slider._marker_positions()
+    assert len(positions) == 3
+    assert positions[0] < positions[1] < positions[2]
+    assert abs(positions[1] - slider.width() / 2) <= 1
+    pixels = slider.grab().toImage()
+    for x in positions:
+        assert pixels.pixelColor(x, slider.height() - 4) != pixels.pixelColor(
+            x + 3, slider.height() - 4
+        )
+    spy = QSignalSpy(slider.seek_requested)
+    QTest.mouseClick(
+        slider, Qt.MouseButton.LeftButton, pos=QPoint(positions[1], slider.height() - 4)
+    )
+    assert spy.count() == 1
+    assert abs(spy.at(0)[0] - 5000) <= 20
+    slider.resize(800, 28)
+    assert slider._marker_positions()[1] > positions[1]
+    slider.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+    reversed_positions = slider._marker_positions()
+    assert reversed_positions[0] > reversed_positions[-1]
+    slider.setRange(0, 0)
+    assert slider._marker_positions() == []
+    slider.close()
+
+
+def test_slider_end_markers_have_distinct_colors_heights_and_tooltips(qapp):
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QHelpEvent
+    from PySide6.QtWidgets import QToolTip
+
+    from kyykka_editor.i18n import set_language
+
+    slider = SeekSlider(Qt.Orientation.Horizontal)
+    slider.resize(400, 28)
+    slider.setRange(0, 10000)
+    slider.set_markers([2000], 5000, 8000)
+    slider.show()
+    qapp.processEvents()
+    details = {kind: (x, timestamp) for x, kind, timestamp in slider._marker_details()}
+    pixels = slider.grab().toImage()
+    assert pixels.pixelColor(details["Round 1 end"][0], 18).name() == "#4488cc"
+    assert pixels.pixelColor(details["Game end"][0], 13).name() == "#35a575"
+    try:
+        for code, label in [("en", "Round 1 end"), ("fi", "1. puolen loppu")]:
+            set_language(code)
+            pos = QPoint(details["Round 1 end"][0], 20)
+            event = QHelpEvent(QEvent.Type.ToolTip, pos, slider.mapToGlobal(pos))
+            QApplication.sendEvent(slider, event)
+            assert QToolTip.text() == f"{label}: 00:00:05.000"
+        slider.set_markers([], 0, 0)
+        assert {kind for _, kind, _ in slider._marker_details()} == {"Round 1 end", "Game end"}
+        slider.set_markers([])
+        assert slider._marker_details() == []
+    finally:
+        QToolTip.hideText()
+        set_language("en")
+        slider.close()
+
+
+def test_slider_markers_follow_added_edited_and_removed_throws(qapp, monkeypatch):
+    window = MainWindow()
+    _set_ready_video(window, monkeypatch)
+    window.mark_impact()
+    assert window.slider.markers == (0,)
+    window.project.impacts[0].timestamp_ms = 1200
+    window._refresh_impacts()
+    assert window.slider.markers == (1200,)
+    window.impact_table.selectRow(0)
+    window.remove_selected()
+    assert window.slider.markers == ()
+    window.project.round_one_end_ms = 4000
+    window.project.game_end_ms = 9000
+    window._refresh_impacts()
+    assert (window.slider.round_end, window.slider.game_end) == (4000, 9000)
+    window.impact_table.selectRow(0)
+    window.remove_selected()
+    assert window.slider.round_end is None
+    assert window.slider.game_end == 9000
+    window.close()
+
+
 def test_seek_slider_click_emits_requested_position(qapp: QApplication) -> None:
     slider = SeekSlider(Qt.Orientation.Horizontal)
     slider.resize(400, 30)
@@ -381,6 +469,41 @@ def _set_ready_video(window, monkeypatch):
     monkeypatch.setattr(window.player, "isSeekable", lambda: True)
     monkeypatch.setattr(window.player, "mediaStatus", lambda: QMediaPlayer.MediaStatus.LoadedMedia)
     window._refresh_export_summary()
+
+
+@pytest.mark.parametrize(
+    "code, message",
+    [
+        ("en", "round 1 ends after the game ends"),
+        ("fi", "1. puoli päättyy ottelun lopun jälkeen"),
+    ],
+)
+def test_invalid_end_order_explains_disabled_export_and_clears_when_fixed(
+    qapp, monkeypatch, code, message
+):
+    from kyykka_editor.i18n import set_language
+
+    set_language(code)
+    window = MainWindow()
+    try:
+        _set_ready_video(window, monkeypatch)
+        window.project.add_impact(1000)
+        window.project.round_one_end_ms = 8000
+        window.project.game_end_ms = 5000
+        window._refresh_impacts()
+        assert not window.export_button.isEnabled()
+        assert message in window.export_summary.text()
+        assert not window.export_summary.toolTip()
+        assert "placeholder-text" not in window.export_summary.styleSheet()
+        window.project.round_one_end_ms = 4000
+        window._refresh_impacts()
+        assert window.export_button.isEnabled()
+        assert message not in window.export_summary.text()
+        assert not window.export_summary.toolTip()
+        assert "placeholder-text" in window.export_summary.styleSheet()
+    finally:
+        window.close()
+        set_language("en")
 
 
 def test_actions_follow_video_selection_and_history(qapp, monkeypatch):

@@ -15,6 +15,7 @@ os.environ.setdefault("QT_FFMPEG_DEBUG", "0")
 os.environ.setdefault("QT_LOGGING_RULES", "qt.multimedia.ffmpeg.*=false")
 
 from PySide6.QtCore import (
+    QEvent,
     QPoint,
     QRectF,
     QSizeF,
@@ -34,9 +35,12 @@ from PySide6.QtGui import (
     QFont,
     QFontDatabase,
     QFontMetrics,
+    QHelpEvent,
     QIcon,
     QKeySequence,
     QMouseEvent,
+    QPainter,
+    QPaintEvent,
     QPen,
     QResizeEvent,
 )
@@ -70,6 +74,7 @@ from PySide6.QtWidgets import (
     QStyleOptionSlider,
     QTableWidget,
     QTableWidgetItem,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -335,6 +340,90 @@ class SeekSlider(QSlider):
 
     seek_requested = Signal(int)
 
+    def __init__(self, orientation: Qt.Orientation, parent: QWidget | None = None) -> None:
+        super().__init__(orientation, parent)
+        self.markers: tuple[int, ...] = ()
+        self.round_end: int | None = None
+        self.game_end: int | None = None
+        self.setMinimumHeight(28)
+
+    def set_markers(
+        self, timestamps: list[int], round_end: int | None = None, game_end: int | None = None
+    ) -> None:
+        self.markers = tuple(sorted(set(timestamps)))
+        self.round_end, self.game_end = round_end, game_end
+        self.update()
+
+    def _marker_positions(self, timestamps: tuple[int, ...] | None = None) -> list[int]:
+        if self.maximum() <= self.minimum():
+            return []
+        option = QStyleOptionSlider()
+        self.initStyleOption(option)
+        groove = self.style().subControlRect(
+            QStyle.ComplexControl.CC_Slider, option, QStyle.SubControl.SC_SliderGroove, self
+        )
+        handle = self.style().subControlRect(
+            QStyle.ComplexControl.CC_Slider, option, QStyle.SubControl.SC_SliderHandle, self
+        )
+        span = max(1, groove.right() - handle.width() + 1 - groove.x())
+        return [
+            groove.x()
+            + handle.width() // 2
+            + QStyle.sliderPositionFromValue(
+                self.minimum(), self.maximum(), timestamp, span, option.upsideDown
+            )
+            for timestamp in (self.markers if timestamps is None else timestamps)
+            if self.minimum() <= timestamp <= self.maximum()
+        ]
+
+    def _marker_details(self) -> list[tuple[int, str, int]]:
+        markers = [("Impact", timestamp) for timestamp in self.markers]
+        if self.round_end is not None:
+            markers.append(("Round 1 end", self.round_end))
+        if self.game_end is not None:
+            markers.append(("Game end", self.game_end))
+        markers = [
+            (kind, timestamp)
+            for kind, timestamp in markers
+            if self.minimum() <= timestamp <= self.maximum()
+        ]
+        positions = self._marker_positions(tuple(timestamp for _, timestamp in markers))
+        return [(x, kind, timestamp) for x, (kind, timestamp) in zip(positions, markers)]
+
+    def event(self, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.ToolTip and isinstance(event, QHelpEvent):
+            labels = [
+                f"{tr(kind)}: {format_timestamp(timestamp)}"
+                for x, kind, timestamp in self._marker_details()
+                if abs(event.pos().x() - x) <= 5
+            ]
+            if labels:
+                QToolTip.showText(event.globalPos(), "\n".join(labels), self)
+            else:
+                QToolTip.hideText()
+                event.ignore()
+            return True
+        return super().event(event)
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        super().paintEvent(event)
+        painter = QPainter(self)
+        color = QColor(
+            "#e4b66b" if self.palette().window().color().lightness() < 128 else "#a66a20"
+        )
+        styles = {
+            "Impact": (color, 6),
+            "Round 1 end": (QColor("#4488cc"), 11),
+            "Game end": (QColor("#35a575"), 16),
+        }
+        for x, kind, _timestamp in self._marker_details():
+            marker_color, height = styles[kind]
+            if not self.isEnabled():
+                marker_color.setAlpha(110)
+            painter.setPen(QPen(marker_color, 2))
+            painter.drawLine(x, self.height() - height, x, self.height() - 2)
+        painter.end()
+
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
@@ -531,6 +620,20 @@ class MainWindow(QMainWindow):
         self.position_label = QLabel("00:00:00.000")
         self.slider = SeekSlider(Qt.Orientation.Horizontal)
         self.duration_label = QLabel("00:00:00.000")
+        slider_option = QStyleOptionSlider()
+        self.slider.initStyleOption(slider_option)
+        slider_height = max(self.slider.minimumHeight(), self.slider.sizeHint().height())
+        slider_option.rect.setHeight(slider_height)
+        groove = self.slider.style().subControlRect(
+            QStyle.ComplexControl.CC_Slider,
+            slider_option,
+            QStyle.SubControl.SC_SliderGroove,
+            self.slider,
+        )
+        # Some native styles keep the track at the top when marker space is added.
+        offset = 2 * groove.y() + groove.height() - slider_height
+        for label in (self.position_label, self.duration_label):
+            label.setContentsMargins(0, max(0, offset), 0, max(0, -offset))
         timeline.addWidget(self.position_label)
         timeline.addWidget(self.slider, 1)
         timeline.addWidget(self.duration_label)
@@ -618,12 +721,6 @@ class MainWindow(QMainWindow):
         self.export_summary.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.export_summary.setWordWrap(True)
         self.export_summary.setStyleSheet("color: palette(placeholder-text);")
-        self.export_summary.setToolTip(
-            tr(
-                "Estimated video length, including title/results and transitions. "
-                "Highlights after the game-end marker are excluded."
-            )
-        )
         right.addWidget(self.export_summary)
         right.addWidget(self.export_button)
 
@@ -743,12 +840,6 @@ class MainWindow(QMainWindow):
                 action.setText(tr(source))
         for action in self.language_group.actions():
             action.setChecked(action.data() == language())
-        self.export_summary.setToolTip(
-            tr(
-                "Estimated video length, including title/results and transitions. "
-                "Highlights after the game-end marker are excluded."
-            )
-        )
         self.impact_table.setHorizontalHeaderLabels([tr("Event"), tr("Timestamp")])
         selected = [(item.row(), item.column()) for item in self.impact_table.selectedItems()]
         self._refresh_impacts()
@@ -1010,6 +1101,11 @@ class MainWindow(QMainWindow):
         return sorted(items, key=lambda item: (item[1], item[0]))
 
     def _refresh_impacts(self) -> None:
+        self.slider.set_markers(
+            [impact.timestamp_ms for impact in self.project.impacts],
+            self.project.round_one_end_ms,
+            self.project.game_end_ms,
+        )
         timeline = self._timeline_items()
         self.impact_table.setRowCount(len(timeline))
         timestamp_font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
@@ -1115,6 +1211,21 @@ class MainWindow(QMainWindow):
             else "{count} highlights · Estimated video: {duration}"
         )
         self.export_summary.setText(tr(source, count=count, duration=length))
+        invalid_order = (
+            self.project.round_one_end_ms is not None
+            and self.project.game_end_ms is not None
+            and self.project.round_one_end_ms > self.project.game_end_ms
+        )
+        if invalid_order:
+            message = tr(
+                "Export unavailable: round 1 ends after the game ends. "
+                "Edit either end marker to fix the order."
+            )
+            self.export_summary.setText(message)
+            color = "#e58b8b" if self.palette().window().color().lightness() < 128 else "#b44747"
+            self.export_summary.setStyleSheet(f"color: {color};")
+        else:
+            self.export_summary.setStyleSheet("color: palette(placeholder-text);")
         self._update_action_states()
 
     def _position_changed(self, position: int) -> None:

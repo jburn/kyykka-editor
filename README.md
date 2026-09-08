@@ -120,6 +120,11 @@ contain separately licensed components; see
 
 ## Controls
 
+Small amber ticks below the playback slider show marked throws. They update when
+throws are added, edited, or removed; slider clicking and keyboard seeking work as before.
+Round-end markers are taller blue ticks; game-end markers are taller green ticks.
+Hover over a marker to see its event name and timestamp.
+
 Choose **Help → Language → Suomi** for Finnish, or **Ohje → Kieli → English**
 to switch back. The interface updates immediately and remembers the selection
 for the next launch. English is the default. Match titles, team/player names,
