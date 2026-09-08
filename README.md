@@ -6,8 +6,8 @@ a compact highlight video around those moments. Made explicitly for editing kyyk
 # Easy and fast workflow
 1. Select a video file and insert match details like teams/players, title and scores
 2. Skim quickly through the video with left and right arrow keys, or by clicking on the video timeline
-3. Cycle through inserted players with ',' and '.' keys and mark the moment of impact for each throw with 'M' key
-4. Insert round 1 and match end to their correct positions in the timeline
+3. Cycle through inserted players with hotkeys and mark the moment of impact for each throw
+4. Insert first round end and match end to their correct positions in the timeline
 5. Export, view and share your freshly edited Kyykkä video!!!
 
 ## Screenshots
