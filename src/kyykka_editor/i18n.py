@@ -9,6 +9,20 @@ _language = "en"
 _qt_translator: QTranslator | None = None
 
 FINNISH = {
+    "The project's source video could not be found:\n{path}\n\nLocate the video in the next window to continue opening this project.": "Projektin lähdevideota ei löytynyt:\n{path}\n\nPaikanna video seuraavassa ikkunassa jatkaaksesi projektin avaamista.",
+    "Open project": "Avaa projekti",
+    "Save project": "Tallenna projekti",
+    "Save project as…": "Tallenna projekti nimellä…",
+    "Kyykka projects (*.kyykka)": "Kyykkäprojektit (*.kyykka)",
+    "Unsaved project": "Tallentamaton projekti",
+    "Save changes before continuing?": "Tallennetaanko muutokset ennen jatkamista?",
+    "Could not save project": "Projektin tallentaminen epäonnistui",
+    "Could not open project": "Projektin avaaminen epäonnistui",
+    "Project saved": "Projekti tallennettu",
+    "Locate missing source video": "Paikanna puuttuva lähdevideo",
+    "Autosave recovery": "Automaattitallennuksen palautus",
+    "Autosave failed": "Automaattitallennus epäonnistui",
+    "Recover the autosaved project from the previous session?": "Palautetaanko edellisen istunnon automaattitallennettu projekti?",
     "Undo latest change": "Kumoa viimeisin muutos",
     "Undo: {action}": "Kumoa: {action}",
     "Undid: {action}": "Kumottu: {action}",

@@ -88,6 +88,7 @@ from .history import TimelineSnapshot
 from .i18n import LANGUAGES, language, saved_language, set_language, tr
 from .model import EditorProject, default_export_filename, format_timestamp
 from .render import RenderCancelled, RenderError, estimate_export, render_highlights
+from .storage import project_data, read_project, write_project
 
 ICON_PATH = Path(__file__).with_name("assets") / "kyykka-editor.png"
 PROJECT_URL = "https://github.com/jburn/kyykka-editor"
@@ -657,6 +658,17 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.project = EditorProject()
+        self.project_path: Path | None = None
+        self.saved_project = project_data(self.project)
+        self.autosaved_project = self.saved_project
+        self.persistence_started = False
+        self.recovery_path = (
+            Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation))
+            / "recovery.kyykka"
+        )
+        self.autosave_timer = QTimer(self)
+        self.autosave_timer.setInterval(5000)
+        self.autosave_timer.timeout.connect(self._autosave)
         self.undo_history: list[TimelineSnapshot] = []
         self.render_thread: RenderThread | None = None
         self.render_dialog: RenderDialog | None = None
@@ -881,6 +893,9 @@ class MainWindow(QMainWindow):
     def _build_menu(self) -> None:
         self.file_menu = menu = self.menuBar().addMenu(tr("&File"))
         for text, shortcut, callback in (
+            ("Open project", "Ctrl+O", self.open_project),
+            ("Save project", "Ctrl+S", lambda: self.save_project()),
+            ("Save project as…", "Ctrl+Shift+S", lambda: self.save_project(save_as=True)),
             ("New match…", "Ctrl+N", self.new_project),
             ("Match details…", "Ctrl+D", self.edit_project_details),
         ):
@@ -979,15 +994,158 @@ class MainWindow(QMainWindow):
         self.statusBar().clearMessage()
 
     def new_project(self) -> None:
+        if self.render_thread is not None:
+            return
         candidate = EditorProject()
         dialog = ProjectDialog(candidate, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         dialog.apply_to(candidate)
+        if not self._confirm_replace():
+            return
         self.player.stop()
         self.project = candidate
+        self.project_path = None
+        self.saved_project = project_data(EditorProject())
         self.undo_history.clear()
         self._load_form()
+        self._autosave()
+
+    def _confirm_replace(self) -> bool:
+        if not self.persistence_started or project_data(self.project) == self.saved_project:
+            return True
+        choice = QMessageBox.question(
+            self,
+            tr("Unsaved project"),
+            tr("Save changes before continuing?"),
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if choice == QMessageBox.StandardButton.Save:
+            return self.save_project()
+        return choice == QMessageBox.StandardButton.Discard
+
+    def save_project(self, save_as: bool = False) -> bool:
+        if self.render_thread is not None:
+            return False
+        path = None if save_as else self.project_path
+        if path is None:
+            filename, _ = QFileDialog.getSaveFileName(
+                self,
+                tr("Save project"),
+                str(self.project_path or Path("match.kyykka")),
+                tr("Kyykka projects (*.kyykka)"),
+            )
+            if not filename:
+                return False
+            path = Path(filename)
+            if path.suffix.lower() != ".kyykka":
+                path = path.with_suffix(".kyykka")
+        try:
+            write_project(path, self.project)
+        except OSError as error:
+            QMessageBox.warning(self, tr("Could not save project"), str(error))
+            return False
+        self.project_path = path
+        self.saved_project = project_data(self.project)
+        self._clear_recovery()
+        self._show_undo_toast(tr("Project saved"))
+        return True
+
+    def open_project(self) -> None:
+        if self.render_thread is not None:
+            return
+        filename, _ = QFileDialog.getOpenFileName(
+            self, tr("Open project"), "", tr("Kyykka projects (*.kyykka)")
+        )
+        if not filename:
+            return
+        self._open_project_path(Path(filename))
+
+    def _open_project_path(self, path: Path, recovering: bool = False) -> bool:
+        try:
+            candidate = read_project(path)
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(self, tr("Could not open project"), str(error))
+            return False
+        original = project_data(candidate)
+        if candidate.video_path and not Path(candidate.video_path).is_file():
+            QMessageBox.warning(
+                self,
+                tr("Video not found"),
+                tr(
+                    "The project's source video could not be found:\n{path}\n\n"
+                    "Locate the video in the next window to continue opening this project.",
+                    path=candidate.video_path,
+                ),
+            )
+            filename, _ = QFileDialog.getOpenFileName(
+                self, tr("Locate missing source video"), str(Path(candidate.video_path).parent)
+            )
+            if not filename:
+                return False
+            candidate.video_path = str(Path(filename).resolve())
+        if not recovering and not self._confirm_replace():
+            return False
+        self.player.stop()
+        self.project = candidate
+        self.project_path = None if recovering else path
+        self.saved_project = project_data(EditorProject()) if recovering else original
+        self.undo_history.clear()
+        self._load_form()
+        if not recovering:
+            self._clear_recovery()
+        self._autosave()
+        return True
+
+    def _clear_recovery(self) -> None:
+        if not self.persistence_started:
+            return
+        try:
+            self.recovery_path.unlink(missing_ok=True)
+            self.autosaved_project = None
+        except OSError as error:
+            QMessageBox.warning(self, tr("Autosave recovery"), str(error))
+
+    def _autosave(self) -> None:
+        if not self.persistence_started:
+            return
+        current = project_data(self.project)
+        if current == self.saved_project:
+            if self.autosaved_project is not None and self.autosaved_project != current:
+                self._clear_recovery()
+            return
+        if current == self.autosaved_project:
+            return
+        try:
+            write_project(self.recovery_path, self.project)
+        except OSError as error:
+            self.autosave_timer.stop()
+            QMessageBox.warning(self, tr("Autosave failed"), str(error))
+            return
+        self.autosaved_project = current
+
+    def start_session(self) -> None:
+        if self.recovery_path.exists():
+            choice = QMessageBox.question(
+                self,
+                tr("Autosave recovery"),
+                tr("Recover the autosaved project from the previous session?"),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if choice == QMessageBox.StandardButton.Yes and not self._open_project_path(
+                self.recovery_path, recovering=True
+            ):
+                self.persistence_started = True
+                self.autosave_timer.start()
+                return
+        self.persistence_started = True
+        self._clear_recovery()
+        self.autosave_timer.start()
+        self._autosave()
 
     def edit_project_details(self) -> None:
         dialog = ProjectDialog(self.project, self)
@@ -1418,8 +1576,12 @@ class MainWindow(QMainWindow):
         self.thrower_combo.clear()
         self.thrower_combo.addItem("")
         self.thrower_combo.addItems(self.project.team_one_players + self.project.team_two_players)
+        self.pre_roll.blockSignals(True)
+        self.post_roll.blockSignals(True)
         self.pre_roll.setValue(self.project.pre_roll_ms // 1_000)
         self.post_roll.setValue(self.project.post_roll_ms // 1_000)
+        self.pre_roll.blockSignals(False)
+        self.post_roll.blockSignals(False)
         self._refresh_impacts()
         if self.project.video_path:
             self._load_video(Path(self.project.video_path))
@@ -1523,6 +1685,11 @@ class MainWindow(QMainWindow):
                 self.render_dialog.reject()
             event.ignore()
             return
+        if not self._confirm_replace():
+            event.ignore()
+            return
+        self._clear_recovery()
+        self.autosave_timer.stop()
         super().closeEvent(event)
 
 
@@ -1537,5 +1704,5 @@ def main() -> int:
     set_language(saved_language())
     window = MainWindow()
     window.show()
-    QTimer.singleShot(0, window.new_project)
+    QTimer.singleShot(0, window.start_session)
     return app.exec()

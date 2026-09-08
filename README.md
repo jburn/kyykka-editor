@@ -147,6 +147,19 @@ Open **Help → Hotkeys** to see all editor shortcuts.
 | Edit selected event | Edit selected… | E |
 
 Primary actions are available through visible controls; shortcuts are supporting controls.
+
+Use **File → Save project** (Ctrl+S), **Save project as…** (Ctrl+Shift+S), and
+**Open project** (Ctrl+O) to save and load `.kyykka` files. These contain match
+details, player lists, marks, timing settings and overrides, and a reference to
+the source video. The video itself is not copied; opening a project prompts you
+to locate it if it has moved. Undo history is limited to the current session.
+
+Changed projects are autosaved every five seconds to a separate recovery file.
+After an unexpected shutdown, the next launch offers to recover that work.
+Recovery opens an unsaved project so you can choose where to save it. Opening
+another project, creating a new match, or closing the application offers
+Save/Discard/Cancel for unsaved changes. A normal close clears the recovery copy.
+
 Thrower cycling follows dropdown order and wraps in either direction, including
 the blank selection.
 

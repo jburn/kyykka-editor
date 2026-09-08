@@ -1,3 +1,1 @@
-- Save/load projects, with autosave recovery
-- Expand undo/redo
 - Make title/round-end/game-end card font and background color/image configurable by users
