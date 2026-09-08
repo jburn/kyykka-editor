@@ -47,7 +47,7 @@ def test_live_language_switch_preserves_match_and_shortcuts(qapp, monkeypatch, t
         round_one_end_ms=2000,
         game_end_ms=3000,
     )
-    window.mark_history = [1000]
+    window._record_undo("Mark impact")
     window._load_form()
     window.thrower_combo.setCurrentIndex(1)
     window.impact_table.selectRow(1)
@@ -60,7 +60,7 @@ def test_live_language_switch_preserves_match_and_shortcuts(qapp, monkeypatch, t
     assert window.project is project
     assert window.project.title == "Play"
     assert window.project.team_one == "Team 1"
-    assert window.mark_history == [1000]
+    assert len(window.undo_history) == 1
     assert window.thrower_combo.currentText() == "Play"
     assert window.video.name_item.text() == "Play"
     assert window.mark_button.text() == "Merkitse osuma"

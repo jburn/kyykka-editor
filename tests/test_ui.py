@@ -102,7 +102,7 @@ def test_edit_throw_reorders_exact_entry_and_preserves_current_thrower(qapp, mon
     window.project.team_one_players = ["Alice", "Bob"]
     window.thrower_combo.addItems(["", "Alice", "Bob"])
     window.thrower_combo.setCurrentText("Alice")
-    window.mark_history = [1000]
+    window._record_undo("Mark impact")
     window._refresh_impacts()
     window.impact_table.selectRow(1)
     assert window.edit_button.isEnabled()
@@ -126,7 +126,7 @@ def test_edit_throw_reorders_exact_entry_and_preserves_current_thrower(qapp, mon
     assert {index.row() for index in window.impact_table.selectedIndexes()} == {2}
     assert window.thrower_combo.currentText() == "Alice"
     assert window.video.name_item.text() == "Alice"
-    assert not window.mark_history
+    assert len(window.undo_history) == 2
     window.close()
 
 
@@ -140,14 +140,14 @@ def test_cancel_or_unchanged_edit_preserves_history(qapp, monkeypatch, accepted)
     _set_ready_video(window, monkeypatch)
     window.mark_impact()
     window.impact_table.selectRow(0)
-    previous = list(window.mark_history)
+    previous = list(window.undo_history)
     monkeypatch.setattr(
         EditMarkDialog,
         "exec",
         lambda _: QDialog.DialogCode.Accepted if accepted else QDialog.DialogCode.Rejected,
     )
     window.edit_selected()
-    assert window.mark_history == previous
+    assert window.undo_history == previous
     assert window.project.impacts[0].timestamp_ms == 0
     window.close()
 
@@ -604,7 +604,7 @@ def test_actions_follow_video_selection_and_history(qapp, monkeypatch):
     assert window.shortcut_actions["Delete"].isEnabled()
     window.impact_table.clearSelection()
     assert not window.remove_button.isEnabled()
-    window.undo_impact()
+    window.undo_last_action()
     assert not window.undo_button.isEnabled()
     assert not window.shortcut_actions["Ctrl+Z"].isEnabled()
     assert not window.export_button.isEnabled()
@@ -618,4 +618,125 @@ def test_actions_follow_video_selection_and_history(qapp, monkeypatch):
     assert not window.mark_button.isEnabled()
     assert not window.play_button.isEnabled()
     assert not window.slider.isEnabled()
+    window.close()
+
+
+def test_undo_restores_entire_mixed_edit_sequence(qapp, monkeypatch):
+    from kyykka_editor.app import EditMarkDialog
+
+    window = MainWindow()
+    _set_ready_video(window, monkeypatch)
+    position = [1000]
+    monkeypatch.setattr(window.player, "position", lambda: position[0])
+    window.thrower_combo.addItems(["", "Alice", "Bob"])
+    window.project.team_one_players = ["Alice", "Bob"]
+
+    def state():
+        return (
+            [
+                (x.timestamp_ms, x.thrower, x.pre_roll_ms, x.post_roll_ms)
+                for x in window.project.impacts
+            ],
+            window.project.round_one_end_ms,
+            window.project.game_end_ms,
+        )
+
+    previous = [state()]
+    window.thrower_combo.setCurrentText("Alice")
+    window.mark_impact()
+    previous.append(state())
+    window.thrower_combo.setCurrentText("Bob")
+    window.mark_impact()
+    previous.append(state())
+    position[0] = 5000
+    window.mark_round_end()
+    previous.append(state())
+    position[0] = 8000
+    window.mark_game_end()
+    previous.append(state())
+    position[0] = 9000
+    window.mark_round_end()
+    assert not window.export_button.isEnabled()
+    window.undo_last_action()
+    assert state() == previous[-1]
+    assert window.export_button.isEnabled()
+    window.impact_table.selectRow(1)
+
+    def edit(dialog):
+        dialog.timestamp_edit.setText("00:00:02.000")
+        dialog.override_before.setChecked(True)
+        dialog.before_spin.setValue(0)
+        dialog.override_after.setChecked(True)
+        dialog.after_spin.setValue(6)
+        dialog.accept()
+        return dialog.result()
+
+    monkeypatch.setattr(EditMarkDialog, "exec", edit)
+    window.edit_selected()
+    previous.append(state())
+    window.impact_table.clearSelection()
+    for row in (0, 2, 3):
+        for column in range(2):
+            window.impact_table.item(row, column).setSelected(True)
+    window.remove_selected()
+    assert len(window.project.impacts) == 1
+    assert window.project.round_one_end_ms is None
+    assert window.project.game_end_ms is None
+    for expected in reversed(previous):
+        window.undo_last_action()
+        assert state() == expected
+        assert window.slider.markers == tuple(
+            sorted({x.timestamp_ms for x in window.project.impacts})
+        )
+    assert not window.undo_history
+    assert not window.undo_button.isEnabled()
+    window.close()
+
+
+def test_undo_preserves_settings_and_player_selection(qapp, monkeypatch):
+    window = MainWindow()
+    _set_ready_video(window, monkeypatch)
+    window.mark_impact()
+    window.project.title = "Updated title"
+    window.pre_roll.setValue(9)
+    window._sync_form()
+    window.thrower_combo.addItems(["", "Bob"])
+    window.thrower_combo.setCurrentText("Bob")
+    window.undo_last_action()
+    assert window.project.title == "Updated title"
+    assert window.project.pre_roll_ms == 9000
+    assert window.thrower_combo.currentText() == "Bob"
+    assert not window.project.impacts
+    window.close()
+
+
+def test_repeated_end_marker_and_empty_delete_do_not_add_undo_steps(qapp, monkeypatch):
+    window = MainWindow()
+    _set_ready_video(window, monkeypatch)
+    window.mark_game_end()
+    window.mark_game_end()
+    window.impact_table.clearSelection()
+    window.remove_selected()
+    assert len(window.undo_history) == 1
+    window.undo_last_action()
+    assert window.project.game_end_ms is None
+    window.undo_last_action()
+    assert not window.undo_history
+    window.close()
+
+
+def test_new_match_clears_undo_but_cancel_preserves_it(qapp, monkeypatch):
+    from PySide6.QtWidgets import QDialog
+
+    window = MainWindow()
+    _set_ready_video(window, monkeypatch)
+    window.mark_impact()
+    monkeypatch.setattr(ProjectDialog, "exec", lambda _: QDialog.DialogCode.Rejected)
+    window.new_project()
+    assert len(window.undo_history) == 1
+    monkeypatch.setattr(ProjectDialog, "exec", lambda _: QDialog.DialogCode.Accepted)
+    monkeypatch.setattr(ProjectDialog, "apply_to", lambda _dialog, _project: None)
+    window.new_project()
+    assert not window.undo_history
+    assert not window.undo_button.isEnabled()
     window.close()

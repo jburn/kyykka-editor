@@ -9,6 +9,12 @@ _language = "en"
 _qt_translator: QTranslator | None = None
 
 FINNISH = {
+    "Undo latest change": "Kumoa viimeisin muutos",
+    "Undo: {action}": "Kumoa: {action}",
+    "Undid: {action}": "Kumottu: {action}",
+    "Delete events": "Tapahtumien poisto",
+    "Edit round 1 end": "Ensimmäisen puolen lopun muokkaus",
+    "Edit game end": "Ottelun lopun muokkaus",
     "Override": "Oma arvo",
     "Uncheck Override to use the main timing settings.": "Poista Oma arvo -valinta käyttääksesi yleisiä aika-asetuksia.",
     " (custom timing)": " (oma ajoitus)",

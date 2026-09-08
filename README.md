@@ -140,7 +140,7 @@ Open **Help → Hotkeys** to see all editor shortcuts.
 | Mark impact | Mark impact | M |
 | Cycle to next thrower | Current thrower dropdown | , |
 | Cycle to previous thrower | Current thrower dropdown | . |
-| Undo latest mark | Undo | Ctrl+Z |
+| Undo latest change | Undo | Ctrl+Z |
 | Seek backward 3 seconds | -3 s | Left arrow |
 | Seek forward 5 seconds | +5 s | Right arrow |
 | Remove selected mark | Remove | Delete |
@@ -154,10 +154,15 @@ Select one timeline entry and choose **Edit selected…** (E) to correct its
 timestamp or assigned thrower. End markers have a timestamp only. **Use current
 playback position** copies the position at which you opened the dialog. Saving
 keeps events in chronological order; Cancel leaves the entry unchanged.
-Double-clicking an entry still seeks to it. Saving an edit clears the existing
-mark-undo history; undoing edits is not yet supported.
+Double-clicking an entry still seeks to it.
 Right-click a timeline entry to access Edit and Remove. Timestamp guidance is
 shown only while the entered value is invalid.
+
+**Undo** (Ctrl+Z) reverses timeline changes: adding throws, marking or moving
+round/game ends, editing timestamps, throwers or timing overrides, and deleting
+entries. Each saved edit or grouped deletion is one undo step. The Undo tooltip
+shows the next change to undo. Starting a new match clears the history; playback,
+player selection and application settings are outside this history. There is no redo.
 
 In **Edit throw**, enable **Override** for Before impact and/or After impact to
 set that throw's timing (0–30 seconds). Unchecked values follow the main timing

@@ -18,6 +18,7 @@ from PySide6.QtCore import (
     QElapsedTimer,
     QEvent,
     QPoint,
+    QPropertyAnimation,
     QRectF,
     QSizeF,
     QStandardPaths,
@@ -55,6 +56,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QGraphicsOpacityEffect,
     QGraphicsRectItem,
     QGraphicsScene,
     QGraphicsSimpleTextItem,
@@ -82,6 +84,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import __version__
+from .history import TimelineSnapshot
 from .i18n import LANGUAGES, language, saved_language, set_language, tr
 from .model import EditorProject, default_export_filename, format_timestamp
 from .render import RenderCancelled, RenderError, estimate_export, render_highlights
@@ -654,7 +657,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.project = EditorProject()
-        self.mark_history: list[int] = []
+        self.undo_history: list[TimelineSnapshot] = []
         self.render_thread: RenderThread | None = None
         self.render_dialog: RenderDialog | None = None
         self.render_outcome: tuple[str, str] | None = None
@@ -675,6 +678,48 @@ class MainWindow(QMainWindow):
         self._build_menu()
         self._connect_player()
         self._refresh_impacts()
+
+        self.undo_toast = QLabel(self)
+        toast_font = self.undo_toast.font()
+        toast_font.setPointSizeF(toast_font.pointSizeF() + 2)
+        self.undo_toast.setFont(toast_font)
+        self.undo_toast.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.undo_toast.setStyleSheet(
+            "background: #30343b; color: #f5f5f5; border-radius: 10px; padding: 14px 22px;"
+        )
+        self.undo_toast.hide()
+        self.toast_opacity = QGraphicsOpacityEffect(self.undo_toast)
+        self.undo_toast.setGraphicsEffect(self.toast_opacity)
+        self.toast_fade = QPropertyAnimation(self.toast_opacity, b"opacity", self)
+        self.toast_fade.setDuration(300)
+        self.toast_fade.setStartValue(1.0)
+        self.toast_fade.setEndValue(0.0)
+        self.toast_fade.finished.connect(self.undo_toast.hide)
+        self.toast_timer = QTimer(self)
+        self.toast_timer.setSingleShot(True)
+        self.toast_timer.setInterval(1700)
+        self.toast_timer.timeout.connect(self.toast_fade.start)
+
+    def _position_undo_toast(self) -> None:
+        self.undo_toast.move(
+            max(0, (self.width() - self.undo_toast.width()) // 2),
+            max(0, (self.height() - self.undo_toast.height()) // 2),
+        )
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "undo_toast"):
+            self._position_undo_toast()
+
+    def _show_undo_toast(self, message: str) -> None:
+        self.toast_fade.stop()
+        self.toast_opacity.setOpacity(1.0)
+        self.undo_toast.setText(message)
+        self.undo_toast.adjustSize()
+        self._position_undo_toast()
+        self.undo_toast.show()
+        self.undo_toast.raise_()
+        self.toast_timer.start()
 
     def _build_ui(self) -> None:
         root = QWidget()
@@ -803,7 +848,7 @@ class MainWindow(QMainWindow):
         self.back_button.clicked.connect(lambda: self.seek_relative(-3_000))
         self.forward_button.clicked.connect(lambda: self.seek_relative(5_000))
         self.mark_button.clicked.connect(self.mark_impact)
-        self.undo_button.clicked.connect(self.undo_impact)
+        self.undo_button.clicked.connect(self.undo_last_action)
         self.remove_button.clicked.connect(self.remove_selected)
         self.edit_button.clicked.connect(self.edit_selected)
         self.export_button.clicked.connect(self.export_video)
@@ -823,7 +868,7 @@ class MainWindow(QMainWindow):
             ("Mark impact", "M", self.mark_impact),
             ("Next thrower", ",", lambda: self.cycle_thrower()),
             ("Previous thrower", ".", lambda: self.cycle_thrower(-1)),
-            ("Undo latest mark", "Ctrl+Z", self.undo_impact),
+            ("Undo latest change", "Ctrl+Z", self.undo_last_action),
             ("Seek backward 3 seconds", "Left", lambda: self.seek_relative(-3_000)),
             ("Seek forward 5 seconds", "Right", lambda: self.seek_relative(5_000)),
             ("Remove selected event", "Delete", self.remove_selected),
@@ -941,7 +986,7 @@ class MainWindow(QMainWindow):
         dialog.apply_to(candidate)
         self.player.stop()
         self.project = candidate
-        self.mark_history.clear()
+        self.undo_history.clear()
         self._load_form()
 
     def edit_project_details(self) -> None:
@@ -1030,19 +1075,29 @@ class MainWindow(QMainWindow):
                 self, tr("No video"), tr("Open a video before marking impacts.")
             )
             return
+        self._record_undo("Mark impact")
         self.project.add_impact(self.player.position(), self.thrower_combo.currentText())
-        self.mark_history.append(self.player.position())
         self._refresh_impacts()
 
-    def undo_impact(self) -> None:
-        if not self.mark_history:
+    def _record_undo(self, action: str) -> None:
+        selected = tuple(sorted({index.row() for index in self.impact_table.selectedIndexes()}))
+        self.undo_history.append(TimelineSnapshot.capture(self.project, action, selected))
+
+    def undo_last_action(self) -> None:
+        if not self.undo_history or self.render_thread is not None:
             return
-        timestamp = self.mark_history.pop()
-        for index in range(len(self.project.impacts) - 1, -1, -1):
-            if self.project.impacts[index].timestamp_ms == timestamp:
-                self.project.remove_impact(index)
-                break
+        previous = self.undo_history.pop()
+        previous.restore(self.project)
         self._refresh_impacts()
+        self.impact_table.clearSelection()
+        for row in previous.selected_rows:
+            for column in range(self.impact_table.columnCount()):
+                item = self.impact_table.item(row, column)
+                if item is not None:
+                    item.setSelected(True)
+        if previous.selected_rows:
+            self.impact_table.scrollToItem(self.impact_table.item(previous.selected_rows[0], 0))
+        self._show_undo_toast(tr("Undid: {action}", action=tr(previous.action)))
 
     def _timeline_context_menu(self, position: QPoint) -> None:
         item = self.impact_table.itemAt(position)
@@ -1110,6 +1165,7 @@ class MainWindow(QMainWindow):
                     impact.post_roll_ms,
                 ):
                     return
+                self._record_undo("Edit throw")
                 impact.timestamp_ms = updated_timestamp
                 impact.thrower = updated_thrower
                 impact.pre_roll_ms, impact.post_roll_ms = before, after
@@ -1117,13 +1173,13 @@ class MainWindow(QMainWindow):
             elif kind == "Round 1 end":
                 if updated_timestamp == timestamp:
                     return
+                self._record_undo("Edit round 1 end")
                 self.project.round_one_end_ms = updated_timestamp
             else:
                 if updated_timestamp == timestamp:
                     return
+                self._record_undo("Edit game end")
                 self.project.game_end_ms = updated_timestamp
-            # Existing undo tracks timestamps of newly added marks, not edits.
-            self.mark_history.clear()
             self._refresh_impacts()
             self.impact_table.clearSelection()
             for row, (event_kind, _, index) in enumerate(self._timeline_items()):
@@ -1142,6 +1198,9 @@ class MainWindow(QMainWindow):
     def remove_selected(self) -> None:
         timeline = self._timeline_items()
         rows = sorted({index.row() for index in self.impact_table.selectedIndexes()})
+        if not rows or self.render_thread is not None:
+            return
+        self._record_undo("Delete events")
         impact_indices: list[int] = []
         for row in rows:
             kind, _timestamp, source_index = timeline[row]
@@ -1153,13 +1212,15 @@ class MainWindow(QMainWindow):
                 self.project.game_end_ms = None
         for source_index in sorted(impact_indices, reverse=True):
             self.project.remove_impact(source_index)
-        self.mark_history.clear()
         self._refresh_impacts()
 
     def mark_round_end(self) -> None:
         if not self.project.video_path:
             QMessageBox.information(self, tr("No video"), tr("Open a video before marking events."))
             return
+        if self.project.round_one_end_ms == self.player.position():
+            return
+        self._record_undo("Mark round 1 end")
         self.project.round_one_end_ms = self.player.position()
         self._refresh_impacts()
 
@@ -1167,6 +1228,9 @@ class MainWindow(QMainWindow):
         if not self.project.video_path:
             QMessageBox.information(self, tr("No video"), tr("Open a video before marking events."))
             return
+        if self.project.game_end_ms == self.player.position():
+            return
+        self._record_undo("Mark game end")
         self.project.game_end_ms = self.player.position()
         self._refresh_impacts()
 
@@ -1263,7 +1327,7 @@ class MainWindow(QMainWindow):
                 self.forward_button,
                 seekable and self.player.position() < self.player.duration(),
             ),
-            ("Ctrl+Z", self.undo_button, idle and bool(self.mark_history)),
+            ("Ctrl+Z", self.undo_button, idle and bool(self.undo_history)),
             ("Delete", self.remove_button, idle and bool(self.impact_table.selectedIndexes())),
             (
                 "E",
@@ -1276,6 +1340,13 @@ class MainWindow(QMainWindow):
         for keys, button, enabled in states:
             button.setEnabled(enabled)
             self.shortcut_actions[keys].setEnabled(enabled)
+        undo_text = (
+            tr("Undo: {action}", action=tr(self.undo_history[-1].action))
+            if self.undo_history
+            else tr("Undo latest change")
+        )
+        self.undo_button.setToolTip(undo_text)
+        self.shortcut_actions["Ctrl+Z"].setText(undo_text)
         self.slider.setEnabled(seekable)
         has_players = self.thrower_combo.count() > 1
         self.thrower_combo.setEnabled(idle and has_players)
