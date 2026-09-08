@@ -49,6 +49,7 @@ from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -266,6 +267,11 @@ class EditMarkDialog(QDialog):
         players: list[str],
         thrower: str | None,
         parent: QWidget | None = None,
+        *,
+        pre_roll_ms: int | None = None,
+        post_roll_ms: int | None = None,
+        default_pre_roll_ms: int = 4000,
+        default_post_roll_ms: int = 3000,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("Edit throw") if thrower is not None else tr("Edit event"))
@@ -289,6 +295,37 @@ class EditMarkDialog(QDialog):
                 self.thrower_combo.addItem(thrower)
             self.thrower_combo.setCurrentText(thrower)
             form.addRow(tr("Thrower"), self.thrower_combo)
+            self.override_before = QCheckBox(tr("Override"))
+            self.override_after = QCheckBox(tr("Override"))
+            self.before_spin = QSpinBox()
+            self.after_spin = QSpinBox()
+            for label, checkbox, spin, override, default in (
+                (
+                    "Before impact",
+                    self.override_before,
+                    self.before_spin,
+                    pre_roll_ms,
+                    default_pre_roll_ms,
+                ),
+                (
+                    "After impact",
+                    self.override_after,
+                    self.after_spin,
+                    post_roll_ms,
+                    default_post_roll_ms,
+                ),
+            ):
+                spin.setRange(0, 30)
+                spin.setSuffix(" s")
+                spin.setValue((default if override is None else override) // 1000)
+                checkbox.setChecked(override is not None)
+                spin.setEnabled(checkbox.isChecked())
+                checkbox.toggled.connect(spin.setEnabled)
+                row = QHBoxLayout()
+                row.addWidget(checkbox)
+                row.addWidget(spin)
+                form.addRow(tr(label), row)
+            form.addRow(QLabel(tr("Uncheck Override to use the main timing settings.")))
         self.validation_label = QLabel(
             tr(
                 "Enter a timestamp between {start} and {end} (hh:mm:ss.mmm).",
@@ -1045,6 +1082,10 @@ class MainWindow(QMainWindow):
                 self.project.team_one_players + self.project.team_two_players,
                 impact.thrower if impact is not None else None,
                 self,
+                pre_roll_ms=impact.pre_roll_ms if impact is not None else None,
+                post_roll_ms=impact.post_roll_ms if impact is not None else None,
+                default_pre_roll_ms=self.pre_roll.value() * 1000,
+                default_post_roll_ms=self.post_roll.value() * 1000,
             )
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
@@ -1054,10 +1095,24 @@ class MainWindow(QMainWindow):
             if impact is not None:
                 assert dialog.thrower_combo is not None
                 updated_thrower = dialog.thrower_combo.currentText()
-                if (updated_timestamp, updated_thrower) == (impact.timestamp_ms, impact.thrower):
+                before = (
+                    dialog.before_spin.value() * 1000
+                    if dialog.override_before.isChecked()
+                    else None
+                )
+                after = (
+                    dialog.after_spin.value() * 1000 if dialog.override_after.isChecked() else None
+                )
+                if (updated_timestamp, updated_thrower, before, after) == (
+                    impact.timestamp_ms,
+                    impact.thrower,
+                    impact.pre_roll_ms,
+                    impact.post_roll_ms,
+                ):
                     return
                 impact.timestamp_ms = updated_timestamp
                 impact.thrower = updated_thrower
+                impact.pre_roll_ms, impact.post_roll_ms = before, after
                 self.project.impacts.sort()
             elif kind == "Round 1 end":
                 if updated_timestamp == timestamp:
@@ -1154,6 +1209,10 @@ class MainWindow(QMainWindow):
                     else tr("Impact")
                 )
             )
+            if source_index is not None:
+                impact = self.project.impacts[source_index]
+                if impact.pre_roll_ms is not None or impact.post_roll_ms is not None:
+                    event_text += tr(" (custom timing)")
             event_item = QTableWidgetItem(event_text)
             event_item.setToolTip(event_text)
             time_item = QTableWidgetItem(format_timestamp(timestamp))

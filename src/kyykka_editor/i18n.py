@@ -9,6 +9,9 @@ _language = "en"
 _qt_translator: QTranslator | None = None
 
 FINNISH = {
+    "Override": "Oma arvo",
+    "Uncheck Override to use the main timing settings.": "Poista Oma arvo -valinta käyttääksesi yleisiä aika-asetuksia.",
+    " (custom timing)": " (oma ajoitus)",
     "Preparing export…": "Valmistellaan vientiä…",
     "Finalizing video…": "Viimeistellään videota…",
     "Elapsed: {time}": "Kulunut aika: {time}",

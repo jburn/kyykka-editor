@@ -152,6 +152,51 @@ def test_cancel_or_unchanged_edit_preserves_history(qapp, monkeypatch, accepted)
     window.close()
 
 
+def test_edit_throw_saves_and_resets_timing_overrides(qapp, monkeypatch):
+    from kyykka_editor.app import EditMarkDialog
+
+    window = MainWindow()
+    _set_ready_video(window, monkeypatch)
+    window.project.add_impact(5000, "Alice")
+    window._refresh_impacts()
+    window.impact_table.selectRow(0)
+
+    def edit(dialog):
+        assert dialog.before_spin.value() == 4
+        assert not dialog.before_spin.isEnabled()
+        dialog.override_before.setChecked(True)
+        dialog.before_spin.setValue(0)
+        assert not dialog.override_after.isChecked()
+        dialog.accept()
+        return dialog.result()
+
+    monkeypatch.setattr(EditMarkDialog, "exec", edit)
+    window.edit_selected()
+    impact = window.project.impacts[0]
+    assert impact.pre_roll_ms == 0
+    assert impact.post_roll_ms is None
+    assert "custom timing" in window.impact_table.item(0, 0).text()
+    window.pre_roll.setValue(9)
+    window.post_roll.setValue(2)
+    window._sync_form()
+    assert window.project.timing_for(impact) == (0, 2000)
+
+    def reset(dialog):
+        assert dialog.override_before.isChecked()
+        assert dialog.before_spin.value() == 0
+        assert dialog.after_spin.value() == 2
+        dialog.override_before.setChecked(False)
+        dialog.accept()
+        return dialog.result()
+
+    monkeypatch.setattr(EditMarkDialog, "exec", reset)
+    window.edit_selected()
+    assert window.project.timing_for(impact) == (9000, 2000)
+    assert impact.pre_roll_ms is None
+    assert "custom timing" not in window.impact_table.item(0, 0).text()
+    window.close()
+
+
 def test_edit_pauses_and_restores_playback(qapp, monkeypatch):
     from kyykka_editor.app import EditMarkDialog
 

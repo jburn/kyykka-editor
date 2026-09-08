@@ -158,3 +158,9 @@ Double-clicking an entry still seeks to it. Saving an edit clears the existing
 mark-undo history; undoing edits is not yet supported.
 Right-click a timeline entry to access Edit and Remove. Timestamp guidance is
 shown only while the entered value is invalid.
+
+In **Edit throw**, enable **Override** for Before impact and/or After impact to
+set that throw's timing (0–30 seconds). Unchecked values follow the main timing
+controls. Throws with overrides are labeled **custom timing** in the timeline.
+Overrides apply to export and the duration estimate; the existing extra footage
+for the first and last throws still applies.

@@ -11,10 +11,14 @@ from .i18n import tr
 class Impact:
     timestamp_ms: int
     thrower: str = field(default="", compare=False)
+    pre_roll_ms: int | None = field(default=None, compare=False)
+    post_roll_ms: int | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
         if self.timestamp_ms < 0:
             raise ValueError("An impact timestamp cannot be negative")
+        if any(value is not None and value < 0 for value in (self.pre_roll_ms, self.post_roll_ms)):
+            raise ValueError("An impact timing override cannot be negative")
 
 
 @dataclass(slots=True)
@@ -43,6 +47,12 @@ class EditorProject:
 
     def remove_impact(self, index: int) -> Impact:
         return self.impacts.pop(index)
+
+    def timing_for(self, impact: Impact) -> tuple[int, int]:
+        return (
+            self.pre_roll_ms if impact.pre_roll_ms is None else impact.pre_roll_ms,
+            self.post_roll_ms if impact.post_roll_ms is None else impact.post_roll_ms,
+        )
 
     @property
     def team_one_total(self) -> int:

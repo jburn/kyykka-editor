@@ -316,9 +316,14 @@ def create_thrower_overlay(name: str, path: Path, size: tuple[int, int]) -> None
 def build_intervals(project: EditorProject, duration_ms: int) -> list[tuple[float, float]]:
     """Return merged highlight intervals in seconds."""
     intervals: list[tuple[int, int]] = []
-    for impact in sorted(project.impacts):
-        start = max(0, impact.timestamp_ms - project.pre_roll_ms)
-        end = min(duration_ms, impact.timestamp_ms + project.post_roll_ms)
+    candidates = []
+    for impact in project.impacts:
+        before, after = project.timing_for(impact)
+        start = max(0, impact.timestamp_ms - before)
+        end = min(duration_ms, impact.timestamp_ms + after)
+        if end > start:
+            candidates.append((start, end))
+    for start, end in sorted(candidates):
         if intervals and start <= intervals[-1][1]:
             intervals[-1] = (intervals[-1][0], max(intervals[-1][1], end))
         elif end > start:
@@ -331,9 +336,10 @@ def _impact_bounds(
 ) -> tuple[float, float]:
     extra_before = EDGE_CLIP_EXTENSION_MS if impact is included[0] else 0
     extra_after = EDGE_CLIP_EXTENSION_MS if impact is included[-1] else 0
+    before, after = project.timing_for(impact)
     return (
-        max(0, impact.timestamp_ms - project.pre_roll_ms - extra_before) / 1_000,
-        min(duration_ms, impact.timestamp_ms + project.post_roll_ms + extra_after) / 1_000,
+        max(0, impact.timestamp_ms - before - extra_before) / 1_000,
+        min(duration_ms, impact.timestamp_ms + after + extra_after) / 1_000,
     )
 
 

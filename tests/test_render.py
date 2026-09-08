@@ -45,6 +45,22 @@ def test_export_estimate_waits_for_video_duration():
     assert estimate_export(EditorProject(impacts=[Impact(1000)]), 0) == (1, None)
 
 
+def test_overrides_apply_to_estimate_and_intervals():
+    impact = Impact(10000, pre_roll_ms=0, post_roll_ms=1000)
+    project = EditorProject(impacts=[impact], pre_roll_ms=6000, post_roll_ms=9000)
+    assert estimate_export(project, 30000) == (1, 10000)
+    assert build_intervals(project, 30000) == [(10, 11)]
+    impact.pre_roll_ms = None
+    assert build_intervals(project, 30000) == [(4, 11)]
+    project.impacts.append(Impact(12000, pre_roll_ms=10000, post_roll_ms=1000))
+    assert build_intervals(project, 30000) == [(2, 13)]
+
+
+def test_negative_timing_override_is_rejected():
+    with pytest.raises(ValueError, match="override"):
+        Impact(1000, pre_roll_ms=-1)
+
+
 def test_intervals_are_clamped_and_overlaps_are_merged() -> None:
     project = EditorProject(
         pre_roll_ms=4_000,
@@ -197,10 +213,10 @@ def test_render_command_preserves_rate_and_requests_windows_compatible_video(
         title="Final",
         team_one="One",
         team_two="Two",
-        impacts=[Impact(5_000, "Player")],
+        impacts=[Impact(5_000, "Player", pre_roll_ms=1000, post_roll_ms=1000)],
         game_end_ms=8_000,
-        pre_roll_ms=1_000,
-        post_roll_ms=1_000,
+        pre_roll_ms=4_000,
+        post_roll_ms=3_000,
     )
     captured: list[str] = []
     captured_options: dict[str, object] = {}
