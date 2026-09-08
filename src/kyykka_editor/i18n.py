@@ -9,6 +9,21 @@ _language = "en"
 _qt_translator: QTranslator | None = None
 
 FINNISH = {
+    "&Settings": "&Asetukset",
+    "Screen settings": "Ruutujen asetukset",
+    "Defaults for new projects. Images fill the screen and are cropped to fit.": "Oletukset uusille projekteille. Kuvat täyttävät ruudun ja rajataan sopiviksi.",
+    "Title screen": "Otsikkoruutu",
+    "Round end screen": "Puolen lopetusruutu",
+    "Match end screen": "Ottelun lopetusruutu",
+    "Font": "Fontti",
+    "Text color": "Tekstin väri",
+    "Background color": "Taustaväri",
+    "Background image": "Taustakuva",
+    "Choose image…": "Valitse kuva…",
+    "Use background color": "Käytä taustaväriä",
+    "Also apply to the current project": "Käytä myös nykyisessä projektissa",
+    "Images (*.png *.jpg *.jpeg *.bmp *.webp)": "Kuvat (*.png *.jpg *.jpeg *.bmp *.webp)",
+    "Could not load card background: {path}": "Ruudun taustakuvan lataaminen epäonnistui: {path}",
     "The project's source video could not be found:\n{path}\n\nLocate the video in the next window to continue opening this project.": "Projektin lähdevideota ei löytynyt:\n{path}\n\nPaikanna video seuraavassa ikkunassa jatkaaksesi projektin avaamista.",
     "Open project": "Avaa projekti",
     "Save project": "Tallenna projekti",

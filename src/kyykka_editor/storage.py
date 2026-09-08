@@ -2,15 +2,16 @@
 
 import json
 import os
+import re
 import tempfile
 from dataclasses import asdict, fields
 from pathlib import Path
 
-from .model import EditorProject, Impact
+from .model import CardStyle, EditorProject, Impact
 
 
 def project_data(project: EditorProject) -> dict:
-    return {"version": 1, "project": asdict(project)}
+    return {"version": 2, "project": asdict(project)}
 
 
 def write_project(path: Path, project: EditorProject) -> None:
@@ -30,15 +31,29 @@ def write_project(path: Path, project: EditorProject) -> None:
 def read_project(path: Path) -> EditorProject:
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
-        if document["version"] != 1:
+        if document["version"] not in (1, 2):
             raise ValueError("Unsupported project version")
         data = document["project"]
         defaults = asdict(EditorProject())
+        if document["version"] == 1 and isinstance(data, dict):
+            for key in ("title_style", "round_style", "final_style"):
+                data.setdefault(key, asdict(CardStyle()))
         if not isinstance(data, dict) or set(data) != set(defaults):
             raise ValueError("Invalid project fields")
         for key, default in defaults.items():
             value = data[key]
-            if key == "impacts":
+            if key in ("title_style", "round_style", "final_style"):
+                if (
+                    not isinstance(value, dict)
+                    or set(value) != set(asdict(CardStyle()))
+                    or not all(isinstance(item, str) for item in value.values())
+                ):
+                    raise ValueError("Invalid card style")
+                for color in ("background_color", "text_color"):
+                    if not re.fullmatch(r"#[0-9a-fA-F]{6}", value[color]):
+                        raise ValueError("Invalid card color")
+                data[key] = CardStyle(**value)
+            elif key == "impacts":
                 if not isinstance(value, list):
                     raise ValueError("Invalid impacts")
                 for impact in value:
@@ -67,6 +82,10 @@ def read_project(path: Path) -> EditorProject:
                 raise ValueError("Invalid default timing")
         data["impacts"] = sorted(Impact(**item) for item in data["impacts"])
         project = EditorProject(**data)
+        for key in ("title_style", "round_style", "final_style"):
+            style = getattr(project, key)
+            if style.background_image and not Path(style.background_image).is_absolute():
+                style.background_image = str((path.parent / style.background_image).resolve())
         if project.video_path and not Path(project.video_path).is_absolute():
             project.video_path = str((path.parent / project.video_path).resolve())
         return project

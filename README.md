@@ -126,7 +126,7 @@ throws are added, edited, or removed; slider clicking and keyboard seeking work 
 Round-end markers are taller blue ticks; game-end markers are taller green ticks.
 Hover over a marker to see its event name and timestamp.
 
-Choose **Help → Language → Suomi** for Finnish, or **Ohje → Kieli → English**
+Choose **Settings → Language → Suomi** for Finnish, or **Asetukset → Kieli → English**
 to switch back. The interface updates immediately and remembers the selection
 for the next launch. English is the default. Match titles, team/player names,
 marks, and playback position are preserved when switching languages.
@@ -147,6 +147,14 @@ Open **Help → Hotkeys** to see all editor shortcuts.
 | Edit selected event | Edit selected… | E |
 
 Primary actions are available through visible controls; shortcuts are supporting controls.
+
+**Settings → Screen settings** configures the title, round-end and match-end screens
+independently. Choose a font, text color, background color or background image,
+and check the preview before saving. Images fill the frame and are center-cropped.
+These settings become defaults for new projects; check **Also apply to the current
+project** to update the open match. Each project saves its own styles. Background
+images are referenced as separate files and must remain available during export.
+Older project files retain the original blue background and white Arial text.
 
 Use **File → Save project** (Ctrl+S), **Save project as…** (Ctrl+Shift+S), and
 **Open project** (Ctrl+O) to save and load `.kyykka` files. These contain match

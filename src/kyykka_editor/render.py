@@ -15,7 +15,7 @@ from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen
 
 from .i18n import tr
-from .model import EditorProject, Impact
+from .model import CardStyle, EditorProject, Impact
 
 TITLE_DURATION_MS = 4_000
 SCORE_CARD_DURATION_MS = 8_000
@@ -152,13 +152,35 @@ def source_frame_rate(video_path: str) -> Fraction:
         raise RenderError(tr("Could not determine the source video's frame rate")) from error
 
 
+def _card_background(style: CardStyle, size: tuple[int, int]) -> QImage:
+    image = QImage(*size, QImage.Format.Format_RGB32)
+    image.fill(QColor(style.background_color))
+    if style.background_image:
+        background = QImage(style.background_image)
+        if background.isNull():
+            raise RenderError(
+                tr("Could not load card background: {path}", path=style.background_image)
+            )
+        background = background.scaled(
+            *size,
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        painter = QPainter(image)
+        painter.drawImage(
+            (size[0] - background.width()) // 2, (size[1] - background.height()) // 2, background
+        )
+        painter.end()
+    return image
+
+
 def create_title_card(project: EditorProject, path: Path, size: tuple[int, int]) -> None:
     width, height = size
-    image = QImage(width, height, QImage.Format.Format_RGB32)
-    image.fill(QColor("#2a76bc"))
+    style = project.title_style
+    image = _card_background(style, size)
     painter = QPainter(image)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setPen(QColor("white"))
+    painter.setPen(QColor(style.text_color))
 
     title = project.title or "Kyykkä"
     matchup = ""
@@ -167,14 +189,14 @@ def create_title_card(project: EditorProject, path: Path, size: tuple[int, int])
         if candidate.casefold() not in title.casefold():
             matchup = candidate
 
-    painter.setFont(QFont("Arial", max(24, height // 16), QFont.Weight.Bold))
+    painter.setFont(QFont(style.font_family, max(24, height // 16), QFont.Weight.Bold))
     painter.drawText(
         QRect(width // 12, height // 4, width * 5 // 6, height // 3),
         Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap,
         title,
     )
     if matchup:
-        painter.setFont(QFont("Arial", max(18, height // 28)))
+        painter.setFont(QFont(style.font_family, max(18, height // 28)))
         painter.drawText(
             QRect(width // 12, height * 7 // 12, width * 5 // 6, height // 6),
             Qt.AlignmentFlag.AlignCenter,
@@ -192,16 +214,16 @@ def create_score_card(
     final: bool,
 ) -> None:
     width, height = size
-    image = QImage(width, height, QImage.Format.Format_RGB32)
-    image.fill(QColor("#2a76bc"))
+    style = project.final_style if final else project.round_style
+    image = _card_background(style, size)
     painter = QPainter(image)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setPen(QColor("white"))
+    painter.setPen(QColor(style.text_color))
     heading = tr("Final result") if final else tr("Round 1 result")
     one_score = project.team_one_total if final else project.team_one_round_one_score
     two_score = project.team_two_total if final else project.team_two_round_one_score
 
-    painter.setFont(QFont("Arial", max(20, height // 25), QFont.Weight.Bold))
+    painter.setFont(QFont(style.font_family, max(20, height // 25), QFont.Weight.Bold))
     painter.drawText(
         QRect(width // 10, height // 8, width * 4 // 5, height // 6),
         Qt.AlignmentFlag.AlignCenter,
@@ -218,7 +240,7 @@ def create_score_card(
     score_padding = max(16, width // 100)
 
     def team_font(name: str) -> QFont:
-        font = QFont("Arial", team_font_size)
+        font = QFont(style.font_family, team_font_size)
         if not final:
             font.setBold(True)
         elif winner_name == name:
@@ -227,7 +249,7 @@ def create_score_card(
         return font
 
     while True:
-        score_font = QFont("Arial", team_font_size, QFont.Weight.Bold)
+        score_font = QFont(style.font_family, team_font_size, QFont.Weight.Bold)
         painter.setFont(team_font(team_one_name))
         team_one_width = painter.fontMetrics().horizontalAdvance(team_one_name)
         painter.setFont(team_font(team_two_name))
@@ -255,7 +277,7 @@ def create_score_card(
     row_height = max(height // 8, team_font_size * 2)
     row_y = height * 2 // 5
     x = (width - total_width) // 2
-    painter.setPen(QColor("white"))
+    painter.setPen(QColor(style.text_color))
     painter.setFont(team_font(team_one_name))
     painter.drawText(
         QRect(x, row_y, team_one_width, row_height),
@@ -266,10 +288,10 @@ def create_score_card(
 
     def draw_score(score: int, box_width: int, box_x: int) -> None:
         box = QRect(box_x, row_y, box_width, row_height)
-        painter.setPen(QPen(QColor(255, 255, 255, 180), max(1, height // 360)))
+        painter.setPen(QPen(QColor(style.text_color), max(1, height // 360)))
         painter.setBrush(QColor(0, 0, 0, 45))
         painter.drawRoundedRect(box, 10, 10)
-        painter.setPen(QColor("white"))
+        painter.setPen(QColor(style.text_color))
         painter.setFont(score_font)
         painter.drawText(box, Qt.AlignmentFlag.AlignCenter, str(score))
 
@@ -277,7 +299,7 @@ def create_score_card(
     x += score_one_width + center_gap
     draw_score(two_score, score_two_width, x)
     x += score_two_width + name_score_gap
-    painter.setPen(QColor("white"))
+    painter.setPen(QColor(style.text_color))
     painter.setFont(team_font(team_two_name))
     painter.drawText(
         QRect(x, row_y, team_two_width, row_height),

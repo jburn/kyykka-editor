@@ -22,7 +22,18 @@ class Impact:
 
 
 @dataclass(slots=True)
+class CardStyle:
+    font_family: str = "Arial"
+    background_color: str = "#2a76bc"
+    text_color: str = "#ffffff"
+    background_image: str = ""
+
+
+@dataclass(slots=True)
 class EditorProject:
+    title_style: CardStyle = field(default_factory=CardStyle)
+    round_style: CardStyle = field(default_factory=CardStyle)
+    final_style: CardStyle = field(default_factory=CardStyle)
     video_path: str = ""
     title: str = ""
     team_one: str = ""

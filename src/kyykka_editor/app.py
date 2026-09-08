@@ -84,6 +84,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import __version__
+from .card_settings import CardSettingsDialog, load_card_defaults
 from .history import TimelineSnapshot
 from .i18n import LANGUAGES, language, saved_language, set_language, tr
 from .model import EditorProject, default_export_filename, format_timestamp
@@ -905,12 +906,17 @@ class MainWindow(QMainWindow):
             action.triggered.connect(callback)
             menu.addAction(action)
 
+        self.settings_menu = self.menuBar().addMenu(tr("&Settings"))
+        screen_action = self.settings_menu.addAction(tr("Screen settings"))
+        screen_action.setProperty("translation_source", "Screen settings")
+        screen_action.triggered.connect(self.edit_card_settings)
+
         self.help_menu = help_menu = self.menuBar().addMenu(tr("&Help"))
         self.hotkeys_menu = hotkeys_menu = help_menu.addMenu(tr("&Hotkeys"))
         hotkeys_menu.addActions(self.actions())
         hotkeys_menu.addSeparator()
         hotkeys_menu.addActions(menu.actions())
-        self.language_menu = help_menu.addMenu(tr("&Language"))
+        self.language_menu = self.settings_menu.addMenu(tr("&Language"))
         self.language_group = QActionGroup(self)
         for code, name in LANGUAGES.items():
             action = self.language_menu.addAction(name)
@@ -960,6 +966,7 @@ class MainWindow(QMainWindow):
         )
         for menu, source in (
             (self.file_menu, "&File"),
+            (self.settings_menu, "&Settings"),
             (self.help_menu, "&Help"),
             (self.hotkeys_menu, "&Hotkeys"),
             (self.language_menu, "&Language"),
@@ -996,7 +1003,7 @@ class MainWindow(QMainWindow):
     def new_project(self) -> None:
         if self.render_thread is not None:
             return
-        candidate = EditorProject()
+        candidate = EditorProject(**load_card_defaults())
         dialog = ProjectDialog(candidate, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -1010,6 +1017,15 @@ class MainWindow(QMainWindow):
         self.undo_history.clear()
         self._load_form()
         self._autosave()
+
+    def edit_card_settings(self) -> None:
+        if self.render_thread is not None:
+            return
+        dialog = CardSettingsDialog(self.project, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.apply_current.isChecked():
+            for key, style in dialog.styles.items():
+                setattr(self.project, key, deepcopy(style))
+            self._autosave()
 
     def _confirm_replace(self) -> bool:
         if not self.persistence_started or project_data(self.project) == self.saved_project:
