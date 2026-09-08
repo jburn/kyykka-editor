@@ -430,6 +430,28 @@ def test_export_button_state_is_restored(qapp: QApplication, monkeypatch) -> Non
     window.close()
 
 
+def test_render_dialog_shows_progress_and_keeps_cancellation_status(qapp):
+    from kyykka_editor.app import RenderDialog
+
+    window = MainWindow()
+    dialog = RenderDialog(window)
+    assert dialog.elapsed_timer.isActive()
+    assert dialog.progress.maximum() == 0
+    dialog.update_progress(25)
+    assert dialog.progress.maximum() == 100
+    assert dialog.progress.value() == 25
+    dialog.update_progress(10)
+    assert dialog.progress.value() == 25
+    assert dialog.elapsed_label.text().startswith("Elapsed:")
+    dialog.reject()
+    dialog.update_progress(90)
+    assert dialog.progress.value() == 25
+    assert dialog.status.text() == "Cancelling render…"
+    dialog.accept()
+    assert not dialog.elapsed_timer.isActive()
+    window.close()
+
+
 def test_render_dialog_cancel_stays_open_until_worker_finishes(qapp, monkeypatch):
     from kyykka_editor.app import RenderDialog, RenderThread
 

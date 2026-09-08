@@ -32,6 +32,7 @@ a compact highlight video around those moments. Made explicitly for editing kyyk
 - FFmpeg-based highlight rendering
 - Rendering dialog with an activity indicator and cancellation; cancelled exports
   clean up temporary files and preserve any existing destination video
+- Live FFmpeg render percentage and elapsed time during export
 
 ## Requirements
 

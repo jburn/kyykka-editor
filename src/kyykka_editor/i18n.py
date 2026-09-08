@@ -9,6 +9,9 @@ _language = "en"
 _qt_translator: QTranslator | None = None
 
 FINNISH = {
+    "Preparing export…": "Valmistellaan vientiä…",
+    "Finalizing video…": "Viimeistellään videota…",
+    "Elapsed: {time}": "Kulunut aika: {time}",
     "Export unavailable: round 1 ends after the game ends. Edit either end marker to fix the order.": "Vienti ei ole mahdollista: 1. puoli päättyy ottelun lopun jälkeen. Korjaa järjestys muokkaamalla jompaakumpaa loppumerkkiä.",
     "Edit throw": "Muokkaa heittoa",
     "Edit event": "Muokkaa tapahtumaa",

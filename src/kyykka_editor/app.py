@@ -15,6 +15,7 @@ os.environ.setdefault("QT_FFMPEG_DEBUG", "0")
 os.environ.setdefault("QT_LOGGING_RULES", "qt.multimedia.ffmpeg.*=false")
 
 from PySide6.QtCore import (
+    QElapsedTimer,
     QEvent,
     QPoint,
     QRectF,
@@ -468,14 +469,40 @@ class RenderDialog(QDialog):
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.setMinimumWidth(380)
         layout = QVBoxLayout(self)
-        self.status = QLabel(tr("Rendering video. This can take several minutes…"))
+        self.status = QLabel(tr("Preparing export…"))
         layout.addWidget(self.status)
         self.progress = QProgressBar()
         self.progress.setRange(0, 0)
         layout.addWidget(self.progress)
+        self.elapsed_label = QLabel()
+        layout.addWidget(self.elapsed_label)
+        self.elapsed = QElapsedTimer()
+        self.elapsed.start()
+        self.elapsed_timer = QTimer(self)
+        self.elapsed_timer.timeout.connect(self._update_elapsed)
+        self.elapsed_timer.start(1000)
+        self._update_elapsed()
         self.cancel_button = QPushButton(tr("Cancel"))
         self.cancel_button.clicked.connect(self.reject)
         layout.addWidget(self.cancel_button)
+
+    def _update_elapsed(self) -> None:
+        self.elapsed_label.setText(
+            tr("Elapsed: {time}", time=format_timestamp(self.elapsed.elapsed()).split(".")[0])
+        )
+
+    def update_progress(self, percent: int) -> None:
+        if not self.cancel_button.isEnabled():
+            return
+        self.progress.setRange(0, 100)
+        self.progress.setValue(max(self.progress.value(), min(100, max(0, percent))))
+        self.status.setText(
+            tr("Finalizing video…") if percent >= 99 else tr("Rendering highlights…")
+        )
+
+    def done(self, result: int) -> None:
+        self.elapsed_timer.stop()
+        super().done(result)
 
     def reject(self) -> None:
         if self.cancel_button.isEnabled():
@@ -492,6 +519,7 @@ class RenderThread(QThread):
     succeeded = Signal(str)
     failed = Signal(str)
     cancelled = Signal()
+    progress_changed = Signal(int)
 
     def __init__(self, project: EditorProject, output: Path, duration_ms: int) -> None:
         super().__init__()
@@ -505,7 +533,13 @@ class RenderThread(QThread):
 
     def run(self) -> None:
         try:
-            render_highlights(self.project, self.output, self.duration_ms, self.cancel_event)
+            render_highlights(
+                self.project,
+                self.output,
+                self.duration_ms,
+                self.cancel_event,
+                self.progress_changed.emit,
+            )
         except RenderCancelled:
             self.cancelled.emit()
         except (RenderError, OSError) as error:
@@ -1314,6 +1348,7 @@ class MainWindow(QMainWindow):
         self.render_thread.finished.connect(self._export_finished)
         self.render_outcome = None
         self.render_dialog = RenderDialog(self)
+        self.render_thread.progress_changed.connect(self.render_dialog.update_progress)
         self.render_dialog.cancel_requested.connect(self.render_thread.cancel)
         self.render_dialog.show()
         self.render_thread.start()

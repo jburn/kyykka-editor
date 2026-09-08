@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import uuid
+from collections.abc import Callable
 from fractions import Fraction
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -30,7 +31,9 @@ class RenderCancelled(RenderError):
     pass
 
 
-def _run_render(command: list[str], cancel: Event) -> subprocess.CompletedProcess[str]:
+def _run_render(
+    command: list[str], cancel: Event, poll_progress: Callable[[], None] | None = None
+) -> subprocess.CompletedProcess[str]:
     if cancel.is_set():
         raise RenderCancelled()
     with subprocess.Popen(
@@ -45,12 +48,16 @@ def _run_render(command: list[str], cancel: Event) -> subprocess.CompletedProces
         while True:
             try:
                 stdout, stderr = process.communicate(timeout=0.1)
+                if poll_progress is not None:
+                    poll_progress()
                 break
             except subprocess.TimeoutExpired:
                 if cancel.is_set():
                     process.kill()
                     process.communicate()
                     raise RenderCancelled()
+                if poll_progress is not None:
+                    poll_progress()
     if cancel.is_set():
         raise RenderCancelled()
     return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
@@ -379,7 +386,11 @@ def estimate_export(project: EditorProject, duration_ms: int) -> tuple[int, int 
 
 
 def render_highlights(
-    project: EditorProject, output_path: Path, duration_ms: int, cancel: Event | None = None
+    project: EditorProject,
+    output_path: Path,
+    duration_ms: int,
+    cancel: Event | None = None,
+    progress: Callable[[int], None] | None = None,
 ) -> None:
     cancel = cancel if cancel is not None else Event()
     if cancel.is_set():
@@ -390,7 +401,7 @@ def render_highlights(
     with TemporaryDirectory(prefix=".kyykka-render-", dir=output_path.parent) as directory:
         staged_output = Path(directory) / output_path.name
         try:
-            _render_highlights(project, staged_output, duration_ms, cancel)
+            _render_highlights(project, staged_output, duration_ms, cancel, progress)
         except RenderError:
             log = staged_output.with_suffix(".ffmpeg-error.log")
             if log.exists():
@@ -407,10 +418,16 @@ def render_highlights(
         if cancel.is_set():
             raise RenderCancelled()
         staged_output.replace(output_path)
+        if progress is not None:
+            progress(100)
 
 
 def _render_highlights(
-    project: EditorProject, output_path: Path, duration_ms: int, cancel: Event
+    project: EditorProject,
+    output_path: Path,
+    duration_ms: int,
+    cancel: Event,
+    progress: Callable[[int], None] | None = None,
 ) -> None:
     """Render a title card followed by all marked highlight intervals."""
     ffmpeg = find_media_tool("ffmpeg")
@@ -676,7 +693,38 @@ def _render_highlights(
         ]
     )
     try:
-        result = _run_render(command, cancel)
+        if progress is None:
+            result = _run_render(command, cancel)
+        else:
+            # A separate progress file lets communicate() drain diagnostics on Windows
+            # while cancellation and progress polling remain responsive.
+            progress_path = output_path.with_suffix(".progress")
+            command[1:1] = ["-nostats", "-stats_period", "0.5", "-progress", str(progress_path)]
+            total_us = max(1, round(sum(segment_durations) * 1_000_000))
+            last_percent = 0
+            with progress_path.open("w+", encoding="utf-8") as progress_file:
+
+                def poll_progress() -> None:
+                    nonlocal last_percent
+                    while True:
+                        position = progress_file.tell()
+                        line = progress_file.readline()
+                        if not line.endswith("\n"):
+                            progress_file.seek(position)
+                            break
+                        key, _, value = line.strip().partition("=")
+                        if key != "out_time_us":
+                            continue
+                        try:
+                            percent = max(0, min(99, int(value) * 100 // total_us))
+                        except ValueError:
+                            continue
+                        if percent > last_percent:
+                            last_percent = percent
+                            progress(percent)
+
+                progress(0)
+                result = _run_render(command, cancel, poll_progress)
     finally:
         for temporary_path in temporary_paths:
             temporary_path.unlink(missing_ok=True)

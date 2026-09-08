@@ -185,8 +185,9 @@ def test_render_rejects_invalid_projects(tmp_path: Path, monkeypatch: pytest.Mon
         render_highlights(project, tmp_path / "out.mp4", 10_000)
 
 
+@pytest.mark.parametrize("with_progress", [False, True])
 def test_render_command_preserves_rate_and_requests_windows_compatible_video(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, with_progress: bool
 ) -> None:
     source = tmp_path / "source.mp4"
     source.touch()
@@ -222,14 +223,35 @@ def test_render_command_preserves_rate_and_requests_windows_compatible_video(
         lambda _name, path, _size: path.touch(),
     )
 
-    def fake_run(command: list[str], _cancel: object) -> subprocess.CompletedProcess[str]:
+    updates = []
+
+    def fake_run(
+        command: list[str], _cancel: object, poll_progress=None
+    ) -> subprocess.CompletedProcess[str]:
         captured.extend(command)
         captured_options.update(render_module._media_subprocess_options())
+        if poll_progress is not None:
+            path = Path(command[command.index("-progress") + 1])
+            with path.open("w", encoding="utf-8") as stream:
+                stream.write("out_time_us=N/A\nout_time_us=9000")
+                stream.flush()
+                poll_progress()
+                assert updates == [0]
+                stream.write("000\n")
+                stream.flush()
+                poll_progress()
+                assert updates == [0, 50]
+                stream.write("out_time_us=4500000\nout_time_us=999999999\n")
+                stream.flush()
+                poll_progress()
+                assert updates == [0, 50, 99]
         Path(command[-1]).touch()
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr("kyykka_editor.render._run_render", fake_run)
-    render_highlights(project, output, 12_000)
+    render_highlights(project, output, 12_000, progress=updates.append if with_progress else None)
+    if with_progress:
+        assert updates == [0, 50, 99, 100]
 
     command = " ".join(captured)
     filter_graph = captured[captured.index("-filter_complex") + 1]
@@ -309,7 +331,7 @@ def test_cancel_preserves_existing_export_and_removes_temporary_files(tmp_path, 
     output = tmp_path / "highlights.mp4"
     output.write_bytes(b"previous export")
 
-    def cancel_render(project, staged, duration, cancel):
+    def cancel_render(project, staged, duration, cancel, progress=None):
         staged.write_bytes(b"partial video")
         (staged.parent / "overlay.png").touch()
         raise render_module.RenderCancelled()

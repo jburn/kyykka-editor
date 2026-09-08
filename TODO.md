@@ -1,6 +1,4 @@
 - Save/load projects, with autosave recovery
-- Show throw markers on playback slider
-- Display actual rendering progress
 - Per throw timing overrides
 - Expand undo/redo
 - Make title/round-end/game-end card font and background color/image configurable by users

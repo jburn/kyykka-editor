@@ -57,7 +57,18 @@ def test_real_render_is_windows_compatible_and_keeps_source_rate(
         impacts=[Impact(2_000, "Player")],
         game_end_ms=3_000,
     )
-    render_highlights(project, output, 4_000)
+    updates = []
+
+    def progress(percent):
+        updates.append(percent)
+        if percent == 100:
+            assert output.is_file()
+
+    render_highlights(project, output, 4_000, progress=progress)
+    assert updates[0] == 0
+    assert updates[-1] == 100
+    assert any(0 < percent < 100 for percent in updates)
+    assert updates == sorted(set(updates))
 
     probe = subprocess.run(
         [
