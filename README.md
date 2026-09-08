@@ -148,6 +148,12 @@ Open **Help → Hotkeys** to see all editor shortcuts.
 
 Primary actions are available through visible controls; shortcuts are supporting controls.
 
+Use **Settings → Configure hotkeys** to change keyboard shortcuts. Select a field
+and press the new key combination, or clear it to disable that shortcut. Duplicate
+bindings must be resolved before saving. **Restore defaults** resets the fields;
+Save applies and remembers the changes. Help → Hotkeys, context menus and the
+thrower hint reflect your bindings. The shortcuts listed above are the defaults.
+
 **Settings → Screen settings** configures the title, round-end and match-end screens
 independently. Choose a font, text color, background color or background image,
 and check the preview before saving. Images fill the frame and are center-cropped.

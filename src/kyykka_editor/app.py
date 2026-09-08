@@ -86,6 +86,7 @@ from PySide6.QtWidgets import (
 from . import __version__
 from .card_settings import CardSettingsDialog, load_card_defaults
 from .history import TimelineSnapshot
+from .hotkeys import HotkeysDialog, load_bindings
 from .i18n import LANGUAGES, language, saved_language, set_language, tr
 from .model import EditorProject, default_export_filename, format_timestamp
 from .render import RenderCancelled, RenderError, estimate_export, render_highlights
@@ -675,6 +676,7 @@ class MainWindow(QMainWindow):
         self.render_dialog: RenderDialog | None = None
         self.render_outcome: tuple[str, str] | None = None
         self.shortcut_actions: dict[str, QAction] = {}
+        self.configurable_actions: dict[str, QAction] = {}
         self.exportable_count = 0
         self.estimated_duration: int | None = None
         self.setWindowTitle("Kyykkä Editor")
@@ -689,6 +691,7 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
         self._build_menu()
+        self._apply_hotkeys(load_bindings({key: key for key in self.configurable_actions}))
         self._connect_player()
         self._refresh_impacts()
 
@@ -905,11 +908,15 @@ class MainWindow(QMainWindow):
             action.setShortcut(QKeySequence(shortcut))
             action.triggered.connect(callback)
             menu.addAction(action)
+            self.configurable_actions[shortcut] = action
 
         self.settings_menu = self.menuBar().addMenu(tr("&Settings"))
         screen_action = self.settings_menu.addAction(tr("Screen settings"))
         screen_action.setProperty("translation_source", "Screen settings")
         screen_action.triggered.connect(self.edit_card_settings)
+        hotkey_action = self.settings_menu.addAction(tr("Configure hotkeys"))
+        hotkey_action.setProperty("translation_source", "Configure hotkeys")
+        hotkey_action.triggered.connect(self.edit_hotkeys)
 
         self.help_menu = help_menu = self.menuBar().addMenu(tr("&Help"))
         self.hotkeys_menu = hotkeys_menu = help_menu.addMenu(tr("&Hotkeys"))
@@ -932,6 +939,33 @@ class MainWindow(QMainWindow):
 
     def show_about(self) -> None:
         AboutDialog(self).exec()
+
+    def edit_hotkeys(self) -> None:
+        if self.render_thread is not None:
+            return
+        dialog = HotkeysDialog(self.configurable_actions, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._apply_hotkeys(dialog.bindings())
+
+    def _apply_hotkeys(self, bindings: dict[str, str]) -> None:
+        for key, action in self.configurable_actions.items():
+            action.setShortcut(QKeySequence(bindings[key]))
+        self._refresh_hotkey_hint()
+
+    def _refresh_hotkey_hint(self) -> None:
+        self.thrower_shortcut_hint.setText(
+            tr(
+                "{next}=next  {previous}=previous",
+                next=self.shortcut_actions[","]
+                .shortcut()
+                .toString(QKeySequence.SequenceFormat.NativeText)
+                or tr("Unassigned"),
+                previous=self.shortcut_actions["."]
+                .shortcut()
+                .toString(QKeySequence.SequenceFormat.NativeText)
+                or tr("Unassigned"),
+            )
+        )
 
     def _change_language(self, code: str) -> None:
         if self.render_thread is not None:
@@ -999,6 +1033,7 @@ class MainWindow(QMainWindow):
             )
             self.video_status.setText(tr(source, name=Path(self.project.video_path).name))
         self.statusBar().clearMessage()
+        self._refresh_hotkey_hint()
 
     def new_project(self) -> None:
         if self.render_thread is not None:
@@ -1181,6 +1216,7 @@ class MainWindow(QMainWindow):
         action.triggered.connect(callback)
         self.addAction(action)
         self.shortcut_actions[keys] = action
+        self.configurable_actions[keys] = action
 
     def _connect_player(self) -> None:
         self.player.positionChanged.connect(self._position_changed)

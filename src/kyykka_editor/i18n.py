@@ -9,6 +9,12 @@ _language = "en"
 _qt_translator: QTranslator | None = None
 
 FINNISH = {
+    "Configure hotkeys": "Pikanäppäinten asetukset",
+    "Select a shortcut and press the new keys. Clear it to disable the shortcut.": "Valitse pikanäppäin ja paina uusia näppäimiä. Tyhjennä kenttä poistaaksesi pikanäppäimen käytöstä.",
+    "Restore defaults": "Palauta oletukset",
+    "Two actions use the same shortcut. Choose unique shortcuts before saving.": "Kaksi toimintoa käyttää samaa pikanäppäintä. Valitse eri pikanäppäimet ennen tallentamista.",
+    "{next}=next  {previous}=previous": "{next}=seuraava  {previous}=edellinen",
+    "Unassigned": "Ei määritetty",
     "&Settings": "&Asetukset",
     "Screen settings": "Ruutujen asetukset",
     "Defaults for new projects. Images fill the screen and are cropped to fit.": "Oletukset uusille projekteille. Kuvat täyttävät ruudun ja rajataan sopiviksi.",
