@@ -1,0 +1,7 @@
+- Preview single throw highlight
+- Show unsaved changes in title bar
+- Named screen-style presets
+- Playback speed control
+- Remember editing position when reopening a project
+- Overlapping highligh warning
+- Drag-and-drop opening
