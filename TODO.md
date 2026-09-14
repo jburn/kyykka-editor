@@ -3,5 +3,7 @@
 - Named screen-style presets
 - Playback speed control
 - Remember editing position when reopening a project
-- Overlapping highligh warning
+- Overlapping highlight warning
 - Drag-and-drop opening
+- Attach sound effect to a throw clip
+- Allow empty team names and custom subtitle to title/result screen
