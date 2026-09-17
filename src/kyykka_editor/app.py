@@ -20,6 +20,7 @@ from PySide6.QtCore import (
     QPoint,
     QPropertyAnimation,
     QRectF,
+    QSettings,
     QSizeF,
     QStandardPaths,
     Qt,
@@ -660,6 +661,17 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.project = EditorProject()
+        settings = QSettings("KyykkaEditor", "KyykkaEditor")
+
+        def skip_seconds(key: str, default: int) -> int:
+            try:
+                value = int(settings.value(key, default))
+                return value if 1 <= value <= 120 else default
+            except (TypeError, ValueError):
+                return default
+
+        self.skip_backward = skip_seconds("skip_backward_seconds", 3)
+        self.skip_forward = skip_seconds("skip_forward_seconds", 5)
         self.project_path: Path | None = None
         self.saved_project = project_data(self.project)
         self.autosaved_project = self.saved_project
@@ -797,24 +809,6 @@ class MainWindow(QMainWindow):
         self.details_button.clicked.connect(self.edit_project_details)
         right.addWidget(self.details_button)
 
-        timing_row = QHBoxLayout()
-        self.pre_roll, self.post_roll = QSpinBox(), QSpinBox()
-        for spin in (self.pre_roll, self.post_roll):
-            spin.setRange(0, 30)
-            spin.setSuffix(" s")
-        self.pre_roll.setValue(4)
-        self.post_roll.setValue(3)
-        self.before_label = before_label = QLabel(tr("Before impact"))
-        before_label.setBuddy(self.pre_roll)
-        self.after_label = after_label = QLabel(tr("After impact"))
-        after_label.setBuddy(self.post_roll)
-        timing_row.addWidget(before_label)
-        timing_row.addWidget(self.pre_roll)
-        timing_row.addSpacing(12)
-        timing_row.addWidget(after_label)
-        timing_row.addWidget(self.post_roll)
-        right.addLayout(timing_row)
-
         thrower_form = QFormLayout()
         self.thrower_combo = QComboBox()
         self.thrower_combo.currentTextChanged.connect(self.video.set_thrower)
@@ -866,17 +860,13 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(root)
 
         self.play_button.clicked.connect(self.toggle_playback)
-        self.back_button.clicked.connect(lambda: self.seek_relative(-3_000))
-        self.forward_button.clicked.connect(lambda: self.seek_relative(5_000))
+        self.back_button.clicked.connect(lambda: self.seek_relative(-self.skip_backward * 1000))
+        self.forward_button.clicked.connect(lambda: self.seek_relative(self.skip_forward * 1000))
         self.mark_button.clicked.connect(self.mark_impact)
         self.undo_button.clicked.connect(self.undo_last_action)
         self.remove_button.clicked.connect(self.remove_selected)
         self.edit_button.clicked.connect(self.edit_selected)
         self.export_button.clicked.connect(self.export_video)
-        self.pre_roll.valueChanged.connect(self._sync_form)
-        self.post_roll.valueChanged.connect(self._sync_form)
-        self.pre_roll.valueChanged.connect(self._refresh_export_summary)
-        self.post_roll.valueChanged.connect(self._refresh_export_summary)
         self.round_end_button.clicked.connect(self.mark_round_end)
         self.game_end_button.clicked.connect(self.mark_game_end)
         self.slider.sliderMoved.connect(self._manual_seek)
@@ -894,8 +884,8 @@ class MainWindow(QMainWindow):
             ("Next thrower", ",", lambda: self.cycle_thrower()),
             ("Previous thrower", ".", lambda: self.cycle_thrower(-1)),
             ("Undo latest change", "Ctrl+Z", self.undo_last_action),
-            ("Seek backward 3 seconds", "Left", lambda: self.seek_relative(-3_000)),
-            ("Seek forward 5 seconds", "Right", lambda: self.seek_relative(5_000)),
+            ("Seek backward", "Left", lambda: self.seek_relative(-self.skip_backward * 1000)),
+            ("Seek forward", "Right", lambda: self.seek_relative(self.skip_forward * 1000)),
             ("Remove selected event", "Delete", self.remove_selected),
             ("Edit selected event", "E", self.edit_selected),
             ("Mark round 1 end", "Ctrl+R", self.mark_round_end),
@@ -920,6 +910,9 @@ class MainWindow(QMainWindow):
             self.configurable_actions[shortcut] = action
 
         self.settings_menu = self.menuBar().addMenu(tr("&Settings"))
+        preferences_action = self.settings_menu.addAction(tr("Preferences"))
+        preferences_action.setProperty("translation_source", "Preferences")
+        preferences_action.triggered.connect(self.edit_preferences)
         screen_action = self.settings_menu.addAction(tr("Screen settings"))
         screen_action.setProperty("translation_source", "Screen settings")
         screen_action.triggered.connect(self.edit_card_settings)
@@ -956,12 +949,104 @@ class MainWindow(QMainWindow):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._apply_hotkeys(dialog.bindings())
 
+    def edit_preferences(self) -> None:
+        if self.render_thread is not None:
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle(tr("Preferences"))
+        layout = QFormLayout(dialog)
+        layout.setHorizontalSpacing(18)
+        layout.setVerticalSpacing(12)
+        backward, forward = QSpinBox(), QSpinBox()
+        skip_row = QHBoxLayout()
+        skip_row.setSpacing(8)
+        backward_label = QLabel(tr("Backward"))
+        backward_label.setBuddy(backward)
+        forward_label = QLabel(tr("Forward"))
+        forward_label.setBuddy(forward)
+        for spin, value, label in (
+            (backward, self.skip_backward, "Skip backward (seconds)"),
+            (forward, self.skip_forward, "Skip forward (seconds)"),
+        ):
+            spin.setRange(1, 120)
+            spin.setValue(value)
+            spin.setAccessibleName(tr(label))
+            spin.setMinimumWidth(64)
+        skip_row.addWidget(backward_label)
+        skip_row.addWidget(backward)
+        skip_row.addWidget(forward)
+        skip_row.addWidget(forward_label)
+        skip_row.addStretch()
+        layout.addRow(tr("Skip (s):"), skip_row)
+        spacer = QWidget()
+        spacer.setFixedHeight(8)
+        layout.addRow(spacer)
+        timing_hint = QLabel(
+            tr(
+                "Default highlight timing for this project. Individual throw overrides take precedence."
+            )
+        )
+        timing_hint.setWordWrap(True)
+        before, after = QSpinBox(), QSpinBox()
+        clipping_row = QHBoxLayout()
+        clipping_row.setSpacing(8)
+        before_label = QLabel(tr("Before"))
+        before_label.setBuddy(before)
+        after_label = QLabel(tr("After impact"))
+        after_label.setBuddy(after)
+        for spin, value, label in (
+            (before, self.project.pre_roll_ms // 1000, "Before impact"),
+            (after, self.project.post_roll_ms // 1000, "After impact"),
+        ):
+            spin.setRange(0, 30)
+            spin.setValue(value)
+            spin.setAccessibleName(tr(label))
+            spin.setMinimumWidth(64)
+        clipping_row.addWidget(before_label)
+        clipping_row.addWidget(before)
+        clipping_row.addWidget(after)
+        clipping_row.addWidget(after_label)
+        clipping_row.addStretch()
+        layout.addRow(tr("Highlight clipping (s):"), clipping_row)
+        timing_hint.setStyleSheet("color: palette(placeholder-text);")
+        timing_hint.setMaximumWidth(480)
+        layout.addRow(timing_hint)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addRow(buttons)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self.skip_backward, self.skip_forward = backward.value(), forward.value()
+        self.project.pre_roll_ms = before.value() * 1000
+        self.project.post_roll_ms = after.value() * 1000
+        self.stop_preview()
+        self._refresh_export_summary()
+        self._autosave()
+        settings = QSettings("KyykkaEditor", "KyykkaEditor")
+        settings.setValue("skip_backward_seconds", self.skip_backward)
+        settings.setValue("skip_forward_seconds", self.skip_forward)
+        self._refresh_skip_labels()
+
+    def _refresh_skip_labels(self) -> None:
+        self.back_button.setText(f"−{self.skip_backward} s")
+        self.forward_button.setText(f"+{self.skip_forward} s")
+        self.shortcut_actions["Left"].setText(
+            tr("Seek backward {seconds} seconds", seconds=self.skip_backward)
+        )
+        self.shortcut_actions["Right"].setText(
+            tr("Seek forward {seconds} seconds", seconds=self.skip_forward)
+        )
+
     def _apply_hotkeys(self, bindings: dict[str, str]) -> None:
         for key, action in self.configurable_actions.items():
             action.setShortcut(QKeySequence(bindings[key]))
         self._refresh_hotkey_hint()
 
     def _refresh_hotkey_hint(self) -> None:
+        self._refresh_skip_labels()
         self.thrower_shortcut_hint.setText(
             tr(
                 "{next}=next  {previous}=previous",
@@ -988,8 +1073,6 @@ class MainWindow(QMainWindow):
             (self.mark_button, "Mark impact"),
             (self.undo_button, "Undo"),
             (self.details_button, "Match details…"),
-            (self.before_label, "Before impact"),
-            (self.after_label, "After impact"),
             (self.thrower_label, "Current thrower"),
             (self.thrower_shortcut_hint, ",=next  .=previous"),
             (self.round_end_button, "Mark round 1 end"),
@@ -1411,8 +1494,8 @@ class MainWindow(QMainWindow):
                 self,
                 pre_roll_ms=impact.pre_roll_ms if impact is not None else None,
                 post_roll_ms=impact.post_roll_ms if impact is not None else None,
-                default_pre_roll_ms=self.pre_roll.value() * 1000,
-                default_post_roll_ms=self.post_roll.value() * 1000,
+                default_pre_roll_ms=self.project.pre_roll_ms,
+                default_post_roll_ms=self.project.post_roll_ms,
             )
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
@@ -1637,8 +1720,8 @@ class MainWindow(QMainWindow):
         self._update_project_title()
         preview = replace(
             self.project,
-            pre_roll_ms=self.pre_roll.value() * 1000,
-            post_roll_ms=self.post_roll.value() * 1000,
+            pre_roll_ms=self.project.pre_roll_ms,
+            post_roll_ms=self.project.post_roll_ms,
         )
         count, duration = estimate_export(preview, self.player.duration())
         self.exportable_count, self.estimated_duration = count, duration
@@ -1686,10 +1769,6 @@ class MainWindow(QMainWindow):
         self.duration_label.setText(format_timestamp(duration))
         self._refresh_export_summary()
 
-    def _sync_form(self) -> None:
-        self.project.pre_roll_ms = self.pre_roll.value() * 1_000
-        self.project.post_roll_ms = self.post_roll.value() * 1_000
-
     def cycle_thrower(self, direction: int = 1) -> None:
         if self.thrower_combo.count() <= 1:
             return
@@ -1701,12 +1780,6 @@ class MainWindow(QMainWindow):
         self.thrower_combo.clear()
         self.thrower_combo.addItem("")
         self.thrower_combo.addItems(self.project.team_one_players + self.project.team_two_players)
-        self.pre_roll.blockSignals(True)
-        self.post_roll.blockSignals(True)
-        self.pre_roll.setValue(self.project.pre_roll_ms // 1_000)
-        self.post_roll.setValue(self.project.post_roll_ms // 1_000)
-        self.pre_roll.blockSignals(False)
-        self.post_roll.blockSignals(False)
         self._refresh_impacts()
         if self.project.video_path:
             self._load_video(Path(self.project.video_path))
@@ -1719,7 +1792,6 @@ class MainWindow(QMainWindow):
         self.stop_preview()
         if self.render_thread is not None:
             return
-        self._sync_form()
         if not self.project.impacts:
             QMessageBox.information(
                 self, tr("No impacts"), tr("Mark at least one impact before exporting.")

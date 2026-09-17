@@ -180,9 +180,11 @@ def test_edit_throw_saves_and_resets_timing_overrides(qapp, monkeypatch):
     assert impact.pre_roll_ms == 0
     assert impact.post_roll_ms is None
     assert "custom timing" in window.impact_table.item(0, 0).text()
-    window.pre_roll.setValue(9)
-    window.post_roll.setValue(2)
-    window._sync_form()
+    window.project.pre_roll_ms = 9000
+    window._refresh_export_summary()
+    window.project.post_roll_ms = 2000
+    window._refresh_export_summary()
+    window._refresh_export_summary()
     assert window.project.timing_for(impact) == (0, 2000)
 
     def reset(dialog):
@@ -564,6 +566,49 @@ def test_highlight_preview_stops_and_manual_seek_exits(qapp, monkeypatch):
     window.close()
 
 
+def test_skip_settings_apply_to_buttons_shortcuts_and_persist(qapp, tmp_path, monkeypatch):
+    from PySide6.QtCore import QSettings
+    from PySide6.QtWidgets import QDialog, QSpinBox
+
+    settings = QSettings(str(tmp_path / "skip.ini"), QSettings.Format.IniFormat)
+    monkeypatch.setattr("kyykka_editor.app.QSettings", lambda *args: settings)
+    window = MainWindow()
+    assert (window.skip_backward, window.skip_forward) == (3, 5)
+
+    def configure(dialog):
+        backward, forward, before, after = dialog.findChildren(QSpinBox)
+        backward.setValue(7)
+        forward.setValue(12)
+        before.setValue(8)
+        after.setValue(6)
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(QDialog, "exec", configure)
+    window.edit_preferences()
+    assert (window.skip_backward, window.skip_forward) == (7, 12)
+    assert (window.project.pre_roll_ms, window.project.post_roll_ms) == (8000, 6000)
+    assert window.back_button.text() == "−7 s"
+    assert window.forward_button.text() == "+12 s"
+    movements = []
+    monkeypatch.setattr(window, "seek_relative", movements.append)
+    window.back_button.setEnabled(True)
+    window.forward_button.setEnabled(True)
+    window.back_button.click()
+    window.forward_button.click()
+    for key in ("Left", "Right"):
+        window.shortcut_actions[key].setEnabled(True)
+        window.shortcut_actions[key].trigger()
+    assert movements == [-7000, 12000, -7000, 12000]
+    restored = MainWindow()
+    assert (restored.skip_backward, restored.skip_forward) == (7, 12)
+    monkeypatch.setattr(QDialog, "exec", lambda dialog: QDialog.DialogCode.Rejected)
+    restored.edit_preferences()
+    assert (restored.skip_backward, restored.skip_forward) == (7, 12)
+    assert (restored.project.pre_roll_ms, restored.project.post_roll_ms) == (4000, 3000)
+    window.close()
+    restored.close()
+
+
 def _set_ready_video(window, monkeypatch):
     window.project.video_path = str(Path("match.mp4").resolve())
     monkeypatch.setattr(
@@ -736,8 +781,9 @@ def test_undo_preserves_settings_and_player_selection(qapp, monkeypatch):
     _set_ready_video(window, monkeypatch)
     window.mark_impact()
     window.project.title = "Updated title"
-    window.pre_roll.setValue(9)
-    window._sync_form()
+    window.project.pre_roll_ms = 9000
+    window._refresh_export_summary()
+    window._refresh_export_summary()
     window.thrower_combo.addItems(["", "Bob"])
     window.thrower_combo.setCurrentText("Bob")
     window.undo_last_action()

@@ -100,7 +100,8 @@ def test_title_tracks_save_undo_and_timing_changes(qapp, tmp_path):
     window.undo_last_action()
     assert not window.windowTitle().startswith("*")
     window.project_path = tmp_path / "match.kyykka"
-    window.pre_roll.setValue(8)
+    window.project.pre_roll_ms = 8000
+    window._refresh_export_summary()
     assert window.project.pre_roll_ms == 8000
     assert window.windowTitle().startswith("* match.kyykka")
     assert window.save_project()
@@ -108,10 +109,12 @@ def test_title_tracks_save_undo_and_timing_changes(qapp, tmp_path):
     assert read_project(window.project_path).pre_roll_ms == 8000
     window.recovery_path = tmp_path / "recovery.kyykka"
     window.persistence_started = True
-    window.post_roll.setValue(9)
+    window.project.post_roll_ms = 9000
+    window._refresh_export_summary()
     window._autosave()
     assert window.windowTitle().startswith("*")
-    window.post_roll.setValue(3)
+    window.project.post_roll_ms = 3000
+    window._refresh_export_summary()
     assert not window.windowTitle().startswith("*")
     window.close()
 
@@ -125,6 +128,4 @@ def test_open_restores_both_default_timings(qapp, tmp_path):
     assert window._open_project_path(path)
     assert window.project.pre_roll_ms == 8000
     assert window.project.post_roll_ms == 9000
-    assert window.pre_roll.value() == 8
-    assert window.post_roll.value() == 9
     window.close()

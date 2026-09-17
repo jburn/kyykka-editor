@@ -1,6 +1,7 @@
 - Named screen-style presets
-- Configure skip forward/backward time amounts
-- Move before/after impact times from main UI to a setting menu
+- Add a standalone "File → Combine videos…" tool: select exported match videos, arrange them in game order, and join them into a single series video. Use FFmpeg without re-encoding for compatible files, offer conversion to a common format when needed, and reuse the progress/cancel popup. Keep it independent of projects, marks, and series tracking.
+- Stop forcing title/round/result cards when user has not inserted the required information
+- Allow for a subtitle in title/match end cards to accommodate custom text for example to indicate match series status
 - Playback speed control
 - Remember editing position when reopening a project
 - Overlapping highlight warning

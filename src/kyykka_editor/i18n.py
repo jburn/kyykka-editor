@@ -9,6 +9,19 @@ _language = "en"
 _qt_translator: QTranslator | None = None
 
 FINNISH = {
+    "Skip (s):": "Siirtymä (s):",
+    "Backward": "Taaksepäin",
+    "Forward": "Eteenpäin",
+    "Before": "Ennen",
+    "Highlight clipping (s):": "Heittoklipin rajaus (s):",
+    "Preferences…": "Yleiset asetukset…",
+    "Default highlight timing for this project. Individual throw overrides take precedence.": "Projektin heittojen oletusajoitus. Heittokohtaiset aika-asetukset ohittavat nämä arvot.",
+    "Skip backward (seconds)": "Siirry taaksepäin (sekuntia)",
+    "Skip forward (seconds)": "Siirry eteenpäin (sekuntia)",
+    "Seek backward": "Siirry taaksepäin",
+    "Seek forward": "Siirry eteenpäin",
+    "Seek backward {seconds} seconds": "Siirry {seconds} sekuntia taaksepäin",
+    "Seek forward {seconds} seconds": "Siirry {seconds} sekuntia eteenpäin",
     "Untitled project": "Nimetön projekti",
     "Preview highlight": "Esikatsele heitto",
     "Stop highlight preview": "Lopeta heiton esikatselu",

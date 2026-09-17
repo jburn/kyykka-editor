@@ -64,7 +64,12 @@ class HotkeysDialog(QDialog):
             editor = QKeySequenceEdit(action.shortcut())
             editor.setMaximumSequenceLength(1)
             editor.setClearButtonEnabled(True)
-            form.addRow(tr(action.property("translation_source")), editor)
+            form.addRow(
+                action.text()
+                if key in ("Left", "Right")
+                else tr(action.property("translation_source")),
+                editor,
+            )
             self.editors[key] = editor
         scroll.setWidget(page)
         layout.addWidget(scroll)

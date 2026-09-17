@@ -148,6 +148,11 @@ Open **Help → Hotkeys** to see all editor shortcuts.
 
 Primary actions are available through visible controls; shortcuts are supporting controls.
 
+**Settings → Preferences** sets independent backward and forward skip lengths
+from 1 to 120 seconds. Defaults are 3 seconds backward and 5 seconds forward.
+The settings apply to both playback buttons and their keyboard shortcuts, and
+are remembered across sessions. Button labels and hotkey descriptions update automatically.
+
 Select a throw and press **P**, or right-click and choose **Preview highlight**, to
 play its export interval in the video player. Preview includes timing overrides
 and extra first/last-throw footage, then pauses at the end. **Escape** stops the
@@ -202,7 +207,10 @@ shows the next change to undo. Starting a new match clears the history; playback
 player selection and application settings are outside this history. There is no redo.
 
 In **Edit throw**, enable **Override** for Before impact and/or After impact to
-set that throw's timing (0–30 seconds). Unchecked values follow the main timing
+set that throw's timing (0–30 seconds). Unchecked values follow the project timing
 controls. Throws with overrides are labeled **custom timing** in the timeline.
 Overrides apply to export and the duration estimate; the existing extra footage
 for the first and last throws still applies.
+
+Default Before/After impact timing is configured in **Settings ? Preferences?**.
+These values are saved with the current project and apply to throws without overrides.
