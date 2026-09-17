@@ -148,6 +148,11 @@ Open **Help → Hotkeys** to see all editor shortcuts.
 
 Primary actions are available through visible controls; shortcuts are supporting controls.
 
+The playback speed dropdown beside the playback buttons offers **0.25×–3×**,
+starting at **1×**. It applies to normal playback and highlight previews only;
+exports and marked timestamps retain their original timing. Skip amounts remain
+seconds of source footage at every speed.
+
 For an individual recording, choose **Solo** under **Recording type** at the top
 of Match details. Enter a player name and their round scores. The title screen
 uses the supplied title or player name; result screens show the player's score

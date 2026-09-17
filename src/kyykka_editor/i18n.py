@@ -9,6 +9,8 @@ _language = "en"
 _qt_translator: QTranslator | None = None
 
 FINNISH = {
+    "Playback speed": "Toistonopeus",
+    "Playback speed (export speed is unchanged)": "Toistonopeus (vientivideon nopeus ei muutu)",
     "End (final result screen)": "Loppu (lopputulosruutu)",
     "\n\nWithout a title, the title screen uses the player name. If both are empty, it is omitted. Missing end markers omit their result screens.\n\nProceed with export?": "\n\nIlman otsikkoa otsikkoruudussa käytetään pelaajan nimeä. Jos molemmat ovat tyhjiä, ruutu jätetään pois. Puuttuvien loppumerkkien tulosruudut jätetään pois.\n\nJatketaanko vientiä?",
     "Recording type": "Tallennuksen tyyppi",

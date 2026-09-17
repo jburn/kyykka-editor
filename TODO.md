@@ -1,7 +1,5 @@
-- Stop forcing title/round/result cards when user has not inserted the required information
 - Named screen-style presets
 - Allow for a subtitle in title/match end cards to accommodate custom text for example to indicate match series status
-- Playback speed control
 - Remember editing position when reopening a project
 - Overlapping highlight warning
 - Drag-and-drop opening

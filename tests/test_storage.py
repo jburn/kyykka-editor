@@ -105,7 +105,7 @@ def test_title_tracks_save_undo_and_timing_changes(qapp, tmp_path):
     assert window.project.pre_roll_ms == 8000
     assert window.windowTitle().startswith("* match.kyykka")
     assert window.save_project()
-    assert window.windowTitle() == "match.kyykka — Kyykkä Editor"
+    assert window.windowTitle() == "match.kyykka - Kyykkä Editor"
     assert read_project(window.project_path).pre_roll_ms == 8000
     window.recovery_path = tmp_path / "recovery.kyykka"
     window.persistence_started = True

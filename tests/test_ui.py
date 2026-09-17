@@ -657,6 +657,26 @@ def test_missing_title_export_confirmation(qapp, monkeypatch, proceed):
     window.close()
 
 
+def test_playback_speed_changes_player_without_modifying_project(qapp, monkeypatch):
+    from kyykka_editor.storage import project_data
+
+    window = MainWindow()
+    assert window.playback_speed.currentData() == 1.0
+    assert not window.playback_speed.isEnabled()
+    _set_ready_video(window, monkeypatch)
+    assert window.playback_speed.isEnabled()
+    original = project_data(window.project)
+    for rate in (0.25, 2.0, 1.0):
+        window.playback_speed.setCurrentIndex(window.playback_speed.findData(rate))
+        assert window.player.playbackRate() == rate
+        assert project_data(window.project) == original
+    window.render_thread = object()
+    window._update_action_states()
+    assert not window.playback_speed.isEnabled()
+    window.render_thread = None
+    window.close()
+
+
 def _set_ready_video(window, monkeypatch):
     window.project.video_path = str(Path("match.mp4").resolve())
     monkeypatch.setattr(

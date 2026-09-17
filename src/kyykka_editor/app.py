@@ -816,6 +816,15 @@ class MainWindow(QMainWindow):
         self.back_button = QPushButton("−3 s")
         self.play_button = QPushButton(tr("Play"))
         self.forward_button = QPushButton("+5 s")
+        self.playback_speed = QComboBox()
+        for rate in (0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0):
+            self.playback_speed.addItem(f"{rate:g}×", rate)
+        self.playback_speed.setCurrentIndex(3)
+        self.playback_speed.setToolTip(tr("Playback speed (export speed is unchanged)"))
+        self.playback_speed.setAccessibleName(tr("Playback speed"))
+        self.playback_speed.currentIndexChanged.connect(
+            lambda: self.player.setPlaybackRate(self.playback_speed.currentData())
+        )
         self.mark_button = QPushButton(tr("Mark impact"))
         self.undo_button = QPushButton(tr("Undo"))
         self.mark_button.setDefault(True)
@@ -823,6 +832,7 @@ class MainWindow(QMainWindow):
             self.back_button,
             self.play_button,
             self.forward_button,
+            self.playback_speed,
             self.mark_button,
             self.undo_button,
         ):
@@ -1092,6 +1102,8 @@ class MainWindow(QMainWindow):
         self._retranslate_ui()
 
     def _retranslate_ui(self) -> None:
+        self.playback_speed.setToolTip(tr("Playback speed (export speed is unchanged)"))
+        self.playback_speed.setAccessibleName(tr("Playback speed"))
         self.preview_indicator.setText(tr("Previewing highlight"))
         for widget, source in (
             (self.mark_button, "Mark impact"),
@@ -1732,6 +1744,7 @@ class MainWindow(QMainWindow):
         self.undo_button.setToolTip(undo_text)
         self.shortcut_actions["Ctrl+Z"].setText(undo_text)
         self.slider.setEnabled(seekable)
+        self.playback_speed.setEnabled(idle and ready)
         has_players = self.thrower_combo.count() > 1
         self.thrower_combo.setEnabled(idle and has_players)
         for keys in (",", "."):
