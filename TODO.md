@@ -1,5 +1,4 @@
 - Named screen-style presets
-- Remember editing position when reopening a project
 - Overlapping highlight warning
 - Drag-and-drop opening
 - Attach sound effect to a throw clip

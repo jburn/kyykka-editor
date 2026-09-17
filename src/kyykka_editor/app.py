@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
 import sys
@@ -705,6 +707,7 @@ class MainWindow(QMainWindow):
         self.skip_backward = skip_seconds("skip_backward_seconds", 3)
         self.skip_forward = skip_seconds("skip_forward_seconds", 5)
         self.project_path: Path | None = None
+        self.pending_resume: tuple[int, str] | None = None
         self.saved_project = project_data(self.project)
         self.autosaved_project = self.saved_project
         self.persistence_started = False
@@ -1182,9 +1185,11 @@ class MainWindow(QMainWindow):
         dialog.apply_to(candidate)
         if not self._confirm_replace():
             return
+        self._remember_position()
         self.player.stop()
         self.project = candidate
         self.project_path = None
+        self.pending_resume = None
         self.saved_project = project_data(EditorProject())
         self.undo_history.clear()
         self._load_form()
@@ -1237,6 +1242,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, tr("Could not save project"), str(error))
             return False
         self.project_path = path
+        self._remember_position()
         self.saved_project = project_data(self.project)
         self._clear_recovery()
         self._update_project_title()
@@ -1278,11 +1284,13 @@ class MainWindow(QMainWindow):
             candidate.video_path = str(Path(filename).resolve())
         if not recovering and not self._confirm_replace():
             return False
+        self._remember_position()
         self.player.stop()
         self.project = candidate
         self.project_path = None if recovering else path
         self.saved_project = project_data(EditorProject()) if recovering else original
         self.undo_history.clear()
+        self.pending_resume = self._read_position()
         self._load_form()
         if not recovering:
             self._clear_recovery()
@@ -1307,6 +1315,7 @@ class MainWindow(QMainWindow):
         self._update_project_title()
         if not self.persistence_started:
             return
+        self._remember_position()
         current = project_data(self.project)
         if current == self.saved_project:
             if self.autosaved_project is not None and self.autosaved_project != current:
@@ -1373,6 +1382,7 @@ class MainWindow(QMainWindow):
         )
         self.player.errorOccurred.connect(self._playback_error)
         self.player.seekableChanged.connect(self._update_action_states)
+        self.player.seekableChanged.connect(self._restore_position)
 
     def _load_video(self, path: Path) -> None:
         self.stop_preview()
@@ -1387,10 +1397,14 @@ class MainWindow(QMainWindow):
         self.video_status.setText(tr("Loading {name}…", name=path.name))
         self.video_status.setToolTip(str(path))
         self.player.setSource(QUrl.fromLocalFile(str(path)))
-        self.player.play()
+        if self.pending_resume is None:
+            self.player.play()
+        else:
+            self.player.pause()
         self._update_project_title()
 
     def _media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
+        self._restore_position()
         if status == QMediaPlayer.MediaStatus.LoadedMedia:
             name = Path(self.project.video_path).name
             self.video_status.setText(tr("Loaded: {name}", name=name))
@@ -1810,6 +1824,7 @@ class MainWindow(QMainWindow):
         self._update_action_states()
 
     def _duration_changed(self, duration: int) -> None:
+        self._restore_position()
         self.slider.setRange(0, duration)
         self.duration_label.setText(format_timestamp(duration))
         self._refresh_export_summary()
@@ -1825,6 +1840,10 @@ class MainWindow(QMainWindow):
         self.thrower_combo.clear()
         self.thrower_combo.addItem("")
         self.thrower_combo.addItems(self.project.throwers)
+        if self.pending_resume is not None:
+            self.thrower_combo.setCurrentIndex(
+                max(0, self.thrower_combo.findText(self.pending_resume[1]))
+            )
         self._refresh_impacts()
         if self.project.video_path:
             self._load_video(Path(self.project.video_path))
@@ -1950,9 +1969,63 @@ class MainWindow(QMainWindow):
         if not self._confirm_replace():
             event.ignore()
             return
+        self._remember_position()
         self._clear_recovery()
         self.autosave_timer.stop()
         super().closeEvent(event)
+
+    def _resume_key(self) -> str | None:
+        if self.project_path is None or not self.project.video_path:
+            return None
+        identity = (
+            str(self.project_path.resolve()).casefold()
+            + "\n"
+            + str(Path(self.project.video_path).resolve()).casefold()
+        )
+        return "resume/" + hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+    def _remember_position(self) -> None:
+        key = self._resume_key()
+        if key is None or self.pending_resume is not None or not self.persistence_started:
+            return
+        if self.player.source() != QUrl.fromLocalFile(str(Path(self.project.video_path).resolve())):
+            return
+        QSettings("KyykkaEditor", "KyykkaEditor").setValue(
+            key, json.dumps([self.player.position(), self.thrower_combo.currentText()])
+        )
+
+    def _read_position(self) -> tuple[int, str] | None:
+        key = self._resume_key()
+        if key is None:
+            return None
+        try:
+            position, thrower = json.loads(
+                QSettings("KyykkaEditor", "KyykkaEditor").value(key, "null")
+            )
+            if type(position) is int and position >= 0 and isinstance(thrower, str):
+                return position, thrower
+        except (TypeError, ValueError):
+            pass
+        return None
+
+    def _restore_position(self) -> None:
+        if self.player.source() != QUrl.fromLocalFile(str(Path(self.project.video_path).resolve())):
+            return
+        if (
+            self.pending_resume is None
+            or self.player.duration() <= 0
+            or not self.player.isSeekable()
+        ):
+            return
+        if self.player.mediaStatus() not in (
+            QMediaPlayer.MediaStatus.LoadedMedia,
+            QMediaPlayer.MediaStatus.BufferedMedia,
+        ):
+            return
+        position, _ = self.pending_resume
+        self.pending_resume = None
+        self.player.pause()
+        self.player.setPosition(min(position, self.player.duration()))
 
 
 def main() -> int:
