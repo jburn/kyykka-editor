@@ -92,7 +92,14 @@ from .history import TimelineSnapshot
 from .hotkeys import HotkeysDialog, load_bindings
 from .i18n import LANGUAGES, language, saved_language, set_language, tr
 from .model import EditorProject, default_export_filename, format_timestamp
-from .render import RenderCancelled, RenderError, estimate_export, preview_bounds, render_highlights
+from .render import (
+    RenderCancelled,
+    RenderError,
+    estimate_export,
+    overlapping_highlights,
+    preview_bounds,
+    render_highlights,
+)
 from .storage import project_data, read_project, write_project
 
 ICON_PATH = Path(__file__).with_name("assets") / "kyykka-editor.png"
@@ -1891,6 +1898,34 @@ class MainWindow(QMainWindow):
                     else tr(
                         "\n\nWithout a title, the title screen uses the supplied team names. If the title, team names and subtitle are empty, it is omitted. Missing end markers omit their result screens.\n\nProceed with export?"
                     )
+                ),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        overlaps = overlapping_highlights(self.project, self.player.duration())
+        if overlaps:
+            details = [
+                tr(
+                    "{first} / {second}: {seconds} s overlap",
+                    first=format_timestamp(first),
+                    second=format_timestamp(second),
+                    seconds=f"{duration / 1000:g}",
+                )
+                for first, second, duration in overlaps[:10]
+            ]
+            if len(overlaps) > 10:
+                details.append(tr("…and {count} more overlapping pairs", count=len(overlaps) - 10))
+            answer = QMessageBox.question(
+                self,
+                tr("Overlapping highlights"),
+                tr(
+                    "Some highlight clips include the same footage, which will be repeated in the export:\n\n"
+                )
+                + "\n".join(details)
+                + tr(
+                    "\n\nYou can adjust the before/after timing or individual throw overrides to reduce overlap. Export anyway?"
                 ),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,

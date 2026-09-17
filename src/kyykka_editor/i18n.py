@@ -9,6 +9,11 @@ _language = "en"
 _qt_translator: QTranslator | None = None
 
 FINNISH = {
+    "Overlapping highlights": "Päällekkäiset heittoklipit",
+    "{first} / {second}: {seconds} s overlap": "{first} / {second}: {seconds} s päällekkäisyyttä",
+    "…and {count} more overlapping pairs": "…ja {count} muuta päällekkäistä paria",
+    "Some highlight clips include the same footage, which will be repeated in the export:\n\n": "Jotkin heittoklipit sisältävät samaa videokuvaa, joka toistuu vientivideossa:\n\n",
+    "\n\nYou can adjust the before/after timing or individual throw overrides to reduce overlap. Export anyway?": "\n\nVoit vähentää päällekkäisyyttä muuttamalla ennen/jälkeen-aikoja tai heittokohtaisia aika-asetuksia. Viedäänkö silti?",
     "Optional": "Valinnainen",
     "Title-screen subtitle": "Otsikkoruudun alaotsikko",
     "Final-result subtitle": "Lopputulosruudun alaotsikko",

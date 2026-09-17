@@ -1,5 +1,4 @@
 - Named screen-style presets
-- Overlapping highlight warning
 - Drag-and-drop opening
 - Attach sound effect to a throw clip
 - Subtle UI cleanup

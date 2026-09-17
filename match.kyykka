@@ -1,0 +1,66 @@
+{
+  "version": 4,
+  "project": {
+    "solo": false,
+    "title_style": {
+      "font_family": "Arial",
+      "background_color": "#2a76bc",
+      "text_color": "#ffffff",
+      "background_image": ""
+    },
+    "round_style": {
+      "font_family": "Arial",
+      "background_color": "#2a76bc",
+      "text_color": "#ffffff",
+      "background_image": ""
+    },
+    "final_style": {
+      "font_family": "Arial",
+      "background_color": "#2a76bc",
+      "text_color": "#ffffff",
+      "background_image": ""
+    },
+    "video_path": "C:\\Users\\jobbr\\ohjelmointi\\kyykka-editor\\vid.mp4",
+    "title": "",
+    "title_subtitle": "",
+    "final_subtitle": "",
+    "team_one": "",
+    "team_two": "",
+    "team_one_players": [],
+    "team_two_players": [],
+    "team_one_round_one_score": 0,
+    "team_two_round_one_score": 0,
+    "team_one_round_two_score": 0,
+    "team_two_round_two_score": 0,
+    "round_one_end_ms": null,
+    "game_end_ms": null,
+    "pre_roll_ms": 4000,
+    "post_roll_ms": 3000,
+    "impacts": [
+      {
+        "timestamp_ms": 101141,
+        "thrower": "",
+        "pre_roll_ms": null,
+        "post_roll_ms": null
+      },
+      {
+        "timestamp_ms": 102442,
+        "thrower": "",
+        "pre_roll_ms": null,
+        "post_roll_ms": null
+      },
+      {
+        "timestamp_ms": 235520,
+        "thrower": "",
+        "pre_roll_ms": null,
+        "post_roll_ms": null
+      },
+      {
+        "timestamp_ms": 252586,
+        "thrower": "",
+        "pre_roll_ms": null,
+        "post_roll_ms": null
+      }
+    ]
+  }
+}

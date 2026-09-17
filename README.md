@@ -148,6 +148,11 @@ Open **Help → Hotkeys** to see all editor shortcuts.
 
 Primary actions are available through visible controls; shortcuts are supporting controls.
 
+Export warns when highlight clips overlap and would repeat source footage. The
+warning lists throw timestamps and overlap durations, including timing overrides
+and first/last-throw extensions. Cancel to adjust timing, or choose Yes to export
+the clips unchanged. Clips that only touch do not trigger a warning.
+
 Saved projects remember the playback position and selected thrower on this computer.
 Reopening restores them once the video loads, with playback paused. Resume state is
 updated every five seconds and when closing or switching projects; it does not

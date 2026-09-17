@@ -415,6 +415,36 @@ def preview_bounds(project: EditorProject, index: int, duration_ms: int) -> tupl
     return (round(start * 1000), round(end * 1000)) if end > start else None
 
 
+def overlapping_highlights(project: EditorProject, duration_ms: int) -> list[tuple[int, int, int]]:
+    """Return overlapping throw timestamps and repeated milliseconds for each pair."""
+    if duration_ms <= 0:
+        return []
+    included = [
+        impact
+        for impact in project.impacts
+        if project.game_end_ms is None or impact.timestamp_ms <= project.game_end_ms
+    ]
+    intervals = []
+    for impact in included:
+        start, end = _impact_bounds(project, impact, included, duration_ms)
+        if end > start:
+            intervals.append((start, end, impact.timestamp_ms))
+    overlaps = []
+    active = []
+    for start, end, timestamp in sorted(intervals):
+        active = [
+            (previous_end, previous_timestamp)
+            for previous_end, previous_timestamp in active
+            if previous_end > start
+        ]
+        for previous_end, previous_timestamp in active:
+            overlaps.append(
+                (previous_timestamp, timestamp, round((min(previous_end, end) - start) * 1000))
+            )
+        active.append((end, timestamp))
+    return overlaps
+
+
 def estimate_export(project: EditorProject, duration_ms: int) -> tuple[int, int | None]:
     """Return exported clip count and approximate output milliseconds, not render time."""
     included = [
