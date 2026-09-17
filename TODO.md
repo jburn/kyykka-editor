@@ -1,4 +1,3 @@
-- Show unsaved changes in title bar
 - Named screen-style presets
 - Configure skip forward/backward time amounts
 - Move before/after impact times from main UI to a setting menu

@@ -873,6 +873,8 @@ class MainWindow(QMainWindow):
         self.remove_button.clicked.connect(self.remove_selected)
         self.edit_button.clicked.connect(self.edit_selected)
         self.export_button.clicked.connect(self.export_video)
+        self.pre_roll.valueChanged.connect(self._sync_form)
+        self.post_roll.valueChanged.connect(self._sync_form)
         self.pre_roll.valueChanged.connect(self._refresh_export_summary)
         self.post_roll.valueChanged.connect(self._refresh_export_summary)
         self.round_end_button.clicked.connect(self.mark_round_end)
@@ -1110,6 +1112,7 @@ class MainWindow(QMainWindow):
         self.project_path = path
         self.saved_project = project_data(self.project)
         self._clear_recovery()
+        self._update_project_title()
         self._show_undo_toast(tr("Project saved"))
         return True
 
@@ -1168,7 +1171,13 @@ class MainWindow(QMainWindow):
         except OSError as error:
             QMessageBox.warning(self, tr("Autosave recovery"), str(error))
 
+    def _update_project_title(self) -> None:
+        name = self.project_path.name if self.project_path else tr("Untitled project")
+        modified = project_data(self.project) != self.saved_project
+        self.setWindowTitle(f"{'* ' if modified else ''}{name} — Kyykkä Editor")
+
     def _autosave(self) -> None:
+        self._update_project_title()
         if not self.persistence_started:
             return
         current = project_data(self.project)
@@ -1252,7 +1261,7 @@ class MainWindow(QMainWindow):
         self.video_status.setToolTip(str(path))
         self.player.setSource(QUrl.fromLocalFile(str(path)))
         self.player.play()
-        self.setWindowTitle(f"Kyykkä Editor — {path.name}")
+        self._update_project_title()
 
     def _media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
         if status == QMediaPlayer.MediaStatus.LoadedMedia:
@@ -1625,6 +1634,7 @@ class MainWindow(QMainWindow):
         )
 
     def _refresh_export_summary(self) -> None:
+        self._update_project_title()
         preview = replace(
             self.project,
             pre_roll_ms=self.pre_roll.value() * 1000,

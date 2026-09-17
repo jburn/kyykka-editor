@@ -9,6 +9,7 @@ _language = "en"
 _qt_translator: QTranslator | None = None
 
 FINNISH = {
+    "Untitled project": "Nimetön projekti",
     "Preview highlight": "Esikatsele heitto",
     "Stop highlight preview": "Lopeta heiton esikatselu",
     "Previewing highlight": "Heiton esikatselu",

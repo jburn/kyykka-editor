@@ -88,6 +88,34 @@ def test_save_and_cancel_protect_unsaved_work(qapp, tmp_path, monkeypatch):
     window.close()
 
 
+def test_title_tracks_save_undo_and_timing_changes(qapp, tmp_path):
+    from kyykka_editor.app import MainWindow
+
+    window = MainWindow()
+    assert not window.windowTitle().startswith("*")
+    window._record_undo("Mark impact")
+    window.project.add_impact(1000)
+    window._refresh_impacts()
+    assert window.windowTitle().startswith("* ")
+    window.undo_last_action()
+    assert not window.windowTitle().startswith("*")
+    window.project_path = tmp_path / "match.kyykka"
+    window.pre_roll.setValue(8)
+    assert window.project.pre_roll_ms == 8000
+    assert window.windowTitle().startswith("* match.kyykka")
+    assert window.save_project()
+    assert window.windowTitle() == "match.kyykka — Kyykkä Editor"
+    assert read_project(window.project_path).pre_roll_ms == 8000
+    window.recovery_path = tmp_path / "recovery.kyykka"
+    window.persistence_started = True
+    window.post_roll.setValue(9)
+    window._autosave()
+    assert window.windowTitle().startswith("*")
+    window.post_roll.setValue(3)
+    assert not window.windowTitle().startswith("*")
+    window.close()
+
+
 def test_open_restores_both_default_timings(qapp, tmp_path):
     from kyykka_editor.app import MainWindow
 

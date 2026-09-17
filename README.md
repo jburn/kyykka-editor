@@ -169,7 +169,11 @@ images are referenced as separate files and must remain available during export.
 Older project files retain the original blue background and white Arial text.
 
 Use **File → Save project** (Ctrl+S), **Save project as…** (Ctrl+Shift+S), and
-**Open project** (Ctrl+O) to save and load `.kyykka` files. These contain match
+**Open project** (Ctrl+O) to save and load `.kyykka` files. The title bar shows
+the project filename (or “Untitled project”) with an asterisk for unsaved changes.
+Autosave preserves recovery data but does not clear this marker.
+
+Project files contain match
 details, player lists, marks, timing settings and overrides, and a reference to
 the source video. The video itself is not copied; opening a project prompts you
 to locate it if it has moved. Undo history is limited to the current session.
