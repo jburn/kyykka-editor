@@ -72,7 +72,11 @@ def test_timeline_context_menu_targets_clicked_entry(qapp, monkeypatch):
     calls = []
 
     def show_menu(menu, position):
-        assert menu.actions() == [window.shortcut_actions["E"], window.shortcut_actions["Delete"]]
+        assert menu.actions() == [
+            window.shortcut_actions["E"],
+            window.shortcut_actions["Delete"],
+            window.shortcut_actions["P"],
+        ]
         assert all(action.isEnabled() for action in menu.actions())
         assert {index.row() for index in window.impact_table.selectedIndexes()} == {1}
         calls.append(position)
@@ -523,6 +527,40 @@ def test_render_dialog_cancel_stays_open_until_worker_finishes(qapp, monkeypatch
     assert window.render_thread is None
     assert window.export_button.isEnabled()
     assert window.statusBar().currentMessage() == "Export cancelled"
+    window.close()
+
+
+def test_highlight_preview_stops_and_manual_seek_exits(qapp, monkeypatch):
+    window = MainWindow()
+    _set_ready_video(window, monkeypatch)
+    window.project.impacts = [Impact(5000, "Alice", 1000, 1000)]
+    window._refresh_impacts()
+    window.impact_table.selectRow(0)
+    positions, pauses = [], []
+    monkeypatch.setattr(window.player, "setPosition", positions.append)
+    monkeypatch.setattr(window.player, "play", lambda: None)
+    monkeypatch.setattr(window.player, "pause", lambda: pauses.append(True))
+    window.preview_highlight()
+    assert positions[-1] == 1000
+    assert window.preview_end == 9000
+    assert not window.preview_indicator.isHidden()
+    window._position_changed(9100)
+    assert window.preview_end is None
+    assert positions[-1] == 9000
+    assert pauses
+    window.preview_highlight()
+    window._manual_seek(4000)
+    assert window.preview_end is None
+    assert positions[-1] == 4000
+    window.preview_highlight()
+    window.shortcut_actions["Escape"].trigger()
+    assert window.preview_end is None
+    window.project.game_end_ms = 4000
+    window._refresh_impacts()
+    window.impact_table.selectRow(1)
+    assert not window.shortcut_actions["P"].isEnabled()
+    window.impact_table.selectRow(0)
+    assert not window.shortcut_actions["P"].isEnabled()
     window.close()
 
 

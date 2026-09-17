@@ -148,6 +148,12 @@ Open **Help → Hotkeys** to see all editor shortcuts.
 
 Primary actions are available through visible controls; shortcuts are supporting controls.
 
+Select a throw and press **P**, or right-click and choose **Preview highlight**, to
+play its export interval in the video player. Preview includes timing overrides
+and extra first/last-throw footage, then pauses at the end. **Escape** stops the
+preview; manual seeking exits preview mode. Both shortcuts are configurable.
+This previews footage boundaries, without rendering cards or transitions.
+
 Use **Settings → Configure hotkeys** to change keyboard shortcuts. Select a field
 and press the new key combination, or clear it to disable that shortcut. Duplicate
 bindings must be resolved before saving. **Restore defaults** resets the fields;

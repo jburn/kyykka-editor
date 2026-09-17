@@ -89,7 +89,7 @@ from .history import TimelineSnapshot
 from .hotkeys import HotkeysDialog, load_bindings
 from .i18n import LANGUAGES, language, saved_language, set_language, tr
 from .model import EditorProject, default_export_filename, format_timestamp
-from .render import RenderCancelled, RenderError, estimate_export, render_highlights
+from .render import RenderCancelled, RenderError, estimate_export, preview_bounds, render_highlights
 from .storage import project_data, read_project, write_project
 
 ICON_PATH = Path(__file__).with_name("assets") / "kyykka-editor.png"
@@ -676,6 +676,7 @@ class MainWindow(QMainWindow):
         self.render_dialog: RenderDialog | None = None
         self.render_outcome: tuple[str, str] | None = None
         self.shortcut_actions: dict[str, QAction] = {}
+        self.preview_end: int | None = None
         self.configurable_actions: dict[str, QAction] = {}
         self.exportable_count = 0
         self.estimated_duration: int | None = None
@@ -746,6 +747,10 @@ class MainWindow(QMainWindow):
         self.video_status = QLabel(tr("No video selected"))
         self.video_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         source_row.addWidget(self.video_status, 1)
+        self.preview_indicator = QLabel(tr("Previewing highlight"))
+        self.preview_indicator.setStyleSheet("color: palette(placeholder-text);")
+        self.preview_indicator.hide()
+        source_row.addWidget(self.preview_indicator)
         left.addLayout(source_row)
         left.addWidget(self.video, 1)
         timeline = QHBoxLayout()
@@ -872,14 +877,16 @@ class MainWindow(QMainWindow):
         self.post_roll.valueChanged.connect(self._refresh_export_summary)
         self.round_end_button.clicked.connect(self.mark_round_end)
         self.game_end_button.clicked.connect(self.mark_game_end)
-        self.slider.sliderMoved.connect(self.player.setPosition)
-        self.slider.seek_requested.connect(self.player.setPosition)
+        self.slider.sliderMoved.connect(self._manual_seek)
+        self.slider.seek_requested.connect(self._manual_seek)
         self.impact_table.cellDoubleClicked.connect(self._seek_to_row)
         self.impact_table.itemSelectionChanged.connect(self._update_action_states)
         self.impact_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.impact_table.customContextMenuRequested.connect(self._timeline_context_menu)
 
         for text, keys, callback in (
+            ("Preview highlight", "P", self.preview_highlight),
+            ("Stop highlight preview", "Escape", self.stop_preview),
             ("Play or pause", "Space", self.toggle_playback),
             ("Mark impact", "M", self.mark_impact),
             ("Next thrower", ",", lambda: self.cycle_thrower()),
@@ -974,6 +981,7 @@ class MainWindow(QMainWindow):
         self._retranslate_ui()
 
     def _retranslate_ui(self) -> None:
+        self.preview_indicator.setText(tr("Previewing highlight"))
         for widget, source in (
             (self.mark_button, "Mark impact"),
             (self.undo_button, "Undo"),
@@ -1231,6 +1239,7 @@ class MainWindow(QMainWindow):
         self.player.seekableChanged.connect(self._update_action_states)
 
     def _load_video(self, path: Path) -> None:
+        self.stop_preview()
         path = path.resolve()
         if not path.is_file():
             QMessageBox.warning(
@@ -1270,6 +1279,7 @@ class MainWindow(QMainWindow):
         )
 
     def toggle_playback(self) -> None:
+        self.stop_preview(pause=False)
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.player.pause()
         else:
@@ -1277,7 +1287,48 @@ class MainWindow(QMainWindow):
 
     def seek_relative(self, milliseconds: int) -> None:
         target = max(0, min(self.player.duration(), self.player.position() + milliseconds))
-        self.player.setPosition(target)
+        self._manual_seek(target)
+
+    def _manual_seek(self, position: int) -> None:
+        self.stop_preview(pause=False)
+        self.player.setPosition(position)
+
+    def _selected_preview_bounds(self) -> tuple[int, int] | None:
+        rows = {item.row() for item in self.impact_table.selectedIndexes()}
+        if len(rows) != 1:
+            return None
+        row = next(iter(rows))
+        items = self._timeline_items()
+        if row >= len(items):
+            return None
+        _, _, index = items[row]
+        return (
+            preview_bounds(self.project, index, self.player.duration())
+            if index is not None
+            else None
+        )
+
+    def preview_highlight(self) -> None:
+        if not self.shortcut_actions["P"].isEnabled():
+            return
+        bounds = self._selected_preview_bounds()
+        if bounds is None:
+            return
+        self.stop_preview()
+        self.player.setPosition(bounds[0])
+        self.preview_end = bounds[1]
+        self.preview_indicator.show()
+        self.player.play()
+        self._update_action_states()
+
+    def stop_preview(self, *, pause: bool = True) -> None:
+        if self.preview_end is None:
+            return
+        self.preview_end = None
+        self.preview_indicator.hide()
+        if pause:
+            self.player.pause()
+        self._update_action_states()
 
     def mark_impact(self) -> None:
         if not self.project.video_path:
@@ -1319,12 +1370,14 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
         menu.addAction(self.shortcut_actions["E"])
         menu.addAction(self.shortcut_actions["Delete"])
+        menu.addAction(self.shortcut_actions["P"])
         try:
             menu.exec(self.impact_table.viewport().mapToGlobal(position))
         finally:
             menu.deleteLater()
 
     def edit_selected(self) -> None:
+        self.stop_preview()
         if not self.edit_button.isEnabled():
             return
         row = self.impact_table.selectedIndexes()[0].row()
@@ -1446,7 +1499,7 @@ class MainWindow(QMainWindow):
 
     def _seek_to_row(self, row: int, _column: int) -> None:
         if self.slider.isEnabled():
-            self.player.setPosition(self._timeline_items()[row][1])
+            self._manual_seek(self._timeline_items()[row][1])
 
     def _timeline_items(self) -> list[tuple[str, int, int | None]]:
         items = [
@@ -1464,6 +1517,7 @@ class MainWindow(QMainWindow):
         return sorted(items, key=lambda item: (item[1], item[0]))
 
     def _refresh_impacts(self) -> None:
+        self.stop_preview()
         self.slider.set_markers(
             [impact.timestamp_ms for impact in self.project.impacts],
             self.project.round_one_end_ms,
@@ -1526,6 +1580,10 @@ class MainWindow(QMainWindow):
             }
         )
         seekable = idle and ready and self.player.isSeekable()
+        self.shortcut_actions["P"].setEnabled(
+            seekable and self._selected_preview_bounds() is not None
+        )
+        self.shortcut_actions["Escape"].setEnabled(self.preview_end is not None)
         states = (
             ("Space", self.play_button, idle and ready),
             ("M", self.mark_button, idle and ready),
@@ -1603,6 +1661,11 @@ class MainWindow(QMainWindow):
         self._update_action_states()
 
     def _position_changed(self, position: int) -> None:
+        if self.preview_end is not None and position >= self.preview_end:
+            end = self.preview_end
+            self.stop_preview()
+            self.player.setPosition(end)
+            position = end
         if not self.slider.isSliderDown():
             self.slider.setValue(position)
         self.position_label.setText(format_timestamp(position))
@@ -1643,6 +1706,7 @@ class MainWindow(QMainWindow):
         self._update_action_states()
 
     def export_video(self) -> None:
+        self.stop_preview()
         if self.render_thread is not None:
             return
         self._sync_form()

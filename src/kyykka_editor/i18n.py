@@ -9,6 +9,9 @@ _language = "en"
 _qt_translator: QTranslator | None = None
 
 FINNISH = {
+    "Preview highlight": "Esikatsele heitto",
+    "Stop highlight preview": "Lopeta heiton esikatselu",
+    "Previewing highlight": "Heiton esikatselu",
     "Configure hotkeys": "Pikanäppäinten asetukset",
     "Select a shortcut and press the new keys. Clear it to disable the shortcut.": "Valitse pikanäppäin ja paina uusia näppäimiä. Tyhjennä kenttä poistaaksesi pikanäppäimen käytöstä.",
     "Restore defaults": "Palauta oletukset",

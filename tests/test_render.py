@@ -1,4 +1,20 @@
 import json
+
+
+def test_preview_uses_export_edges_and_overrides():
+    from kyykka_editor.render import preview_bounds
+
+    project = EditorProject(
+        impacts=[Impact(1000), Impact(10000, "B", 500, 1500), Impact(19000)], game_end_ms=20000
+    )
+    assert preview_bounds(project, 0, 20000) == (0, 4000)
+    assert preview_bounds(project, 1, 20000) == (9500, 11500)
+    assert preview_bounds(project, 2, 20000) == (15000, 20000)
+    project.game_end_ms = 15000
+    assert preview_bounds(project, 2, 20000) is None
+    assert preview_bounds(project, 1, 20000) == (9500, 14500)
+
+
 import subprocess
 from fractions import Fraction
 from pathlib import Path

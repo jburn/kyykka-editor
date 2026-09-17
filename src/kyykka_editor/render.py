@@ -365,6 +365,21 @@ def _impact_bounds(
     )
 
 
+def preview_bounds(project: EditorProject, index: int, duration_ms: int) -> tuple[int, int] | None:
+    included = [
+        impact
+        for impact in project.impacts
+        if project.game_end_ms is None or impact.timestamp_ms <= project.game_end_ms
+    ]
+    if not 0 <= index < len(project.impacts) or duration_ms <= 0:
+        return None
+    impact = project.impacts[index]
+    if not any(item is impact for item in included):
+        return None
+    start, end = _impact_bounds(project, impact, included, duration_ms)
+    return (round(start * 1000), round(end * 1000)) if end > start else None
+
+
 def estimate_export(project: EditorProject, duration_ms: int) -> tuple[int, int | None]:
     """Return exported clip count and approximate output milliseconds, not render time."""
     included = [

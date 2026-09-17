@@ -1,10 +1,12 @@
-- Preview single throw highlight
 - Show unsaved changes in title bar
 - Named screen-style presets
+- Configure skip forward/backward time amounts
+- Move before/after impact times from main UI to a setting menu
 - Playback speed control
 - Remember editing position when reopening a project
 - Overlapping highlight warning
 - Drag-and-drop opening
 - Attach sound effect to a throw clip
 - Allow empty team names and custom subtitle to title/result screen
+- Subtle UI cleanup
 - Replace the black empty video area with a theme-matching placeholder showing subtle "No video file selected" text and a "Match details" link that opens the match details dialog to choose a video. Keep a thin, muted border around the playback area both with and without a video loaded.
