@@ -11,7 +11,7 @@ from .model import CardStyle, EditorProject, Impact
 
 
 def project_data(project: EditorProject) -> dict:
-    return {"version": 5, "project": asdict(project)}
+    return {"version": 6, "project": asdict(project)}
 
 
 def write_project(path: Path, project: EditorProject) -> None:
@@ -31,7 +31,7 @@ def write_project(path: Path, project: EditorProject) -> None:
 def read_project(path: Path) -> EditorProject:
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
-        if document["version"] not in (1, 2, 3, 4, 5):
+        if document["version"] not in (1, 2, 3, 4, 5, 6):
             raise ValueError("Unsupported project version")
         data = document["project"]
         defaults = asdict(EditorProject())
@@ -62,18 +62,14 @@ def read_project(path: Path) -> EditorProject:
                 if not isinstance(value, list):
                     raise ValueError("Invalid impacts")
                 for impact in value:
-                    if document["version"] < 5 and isinstance(impact, dict):
-                        impact.setdefault("sound_path", "")
-                        impact.setdefault("sound_at", "impact")
+                    if document["version"] == 5 and isinstance(impact, dict):
+                        # Ignore removed sound effects in previously saved projects.
+                        impact.pop("sound_path", None)
+                        impact.pop("sound_at", None)
                     if not isinstance(impact, dict) or set(impact) != {
                         f.name for f in fields(Impact)
                     }:
                         raise ValueError("Invalid impact fields")
-                    if not isinstance(impact["sound_path"], str) or impact["sound_at"] not in (
-                        "start",
-                        "impact",
-                    ):
-                        raise ValueError("Invalid sound effect")
                     if type(impact["timestamp_ms"]) is not int or not isinstance(
                         impact["thrower"], str
                     ):
@@ -95,9 +91,6 @@ def read_project(path: Path) -> EditorProject:
                 raise ValueError("Invalid default timing")
         data["impacts"] = sorted(Impact(**item) for item in data["impacts"])
         project = EditorProject(**data)
-        for impact in project.impacts:
-            if impact.sound_path and not Path(impact.sound_path).is_absolute():
-                impact.sound_path = str((path.parent / impact.sound_path).resolve())
         for key in ("title_style", "round_style", "final_style"):
             style = getattr(project, key)
             if style.background_image and not Path(style.background_image).is_absolute():

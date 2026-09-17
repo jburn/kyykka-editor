@@ -9,14 +9,6 @@ _language = "en"
 _qt_translator: QTranslator | None = None
 
 FINNISH = {
-    "Choose sound…": "Valitse ääni…",
-    "Remove sound": "Poista ääni",
-    "Sound effect": "Äänitehoste",
-    "Clip start": "Klipin alku",
-    "Impact moment": "Osumahetki",
-    "Play sound at": "Äänen ajankohta",
-    "Audio files (*.wav *.mp3 *.ogg *.flac *.m4a *.aac)": "Äänitiedostot (*.wav *.mp3 *.ogg *.flac *.m4a *.aac)",
-    "Could not load sound effect: {path}": "Äänitehosteen lataaminen epäonnistui: {path}",
     "Overlapping highlights": "Päällekkäiset heittoklipit",
     "{first} / {second}: {seconds} s overlap": "{first} / {second}: {seconds} s päällekkäisyyttä",
     "…and {count} more overlapping pairs": "…ja {count} muuta päällekkäistä paria",
