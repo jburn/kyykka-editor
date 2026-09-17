@@ -9,10 +9,13 @@ _language = "en"
 _qt_translator: QTranslator | None = None
 
 FINNISH = {
+    "Optional": "Valinnainen",
+    "Title-screen subtitle": "Otsikkoruudun alaotsikko",
+    "Final-result subtitle": "Lopputulosruudun alaotsikko",
     "Playback speed": "Toistonopeus",
     "Playback speed (export speed is unchanged)": "Toistonopeus (vientivideon nopeus ei muutu)",
     "End (final result screen)": "Loppu (lopputulosruutu)",
-    "\n\nWithout a title, the title screen uses the player name. If both are empty, it is omitted. Missing end markers omit their result screens.\n\nProceed with export?": "\n\nIlman otsikkoa otsikkoruudussa käytetään pelaajan nimeä. Jos molemmat ovat tyhjiä, ruutu jätetään pois. Puuttuvien loppumerkkien tulosruudut jätetään pois.\n\nJatketaanko vientiä?",
+    "\n\nWithout a title, the title screen uses the player name. If the title, player name and subtitle are empty, it is omitted. Missing end markers omit their result screens.\n\nProceed with export?": "\n\nIlman otsikkoa otsikkoruudussa käytetään pelaajan nimeä. Jos molemmat ovat tyhjiä, ruutu jätetään pois. Puuttuvien loppumerkkien tulosruudut jätetään pois.\n\nJatketaanko vientiä?",
     "Recording type": "Tallennuksen tyyppi",
     "Match": "Ottelu",
     "Solo": "Yksinpeli",
@@ -23,7 +26,7 @@ FINNISH = {
     "Team 2 name": "Joukkueen 2 nimi",
     "Missing match information": "Ottelun tietoja puuttuu",
     "The following information or markers are missing:\n\n": "Seuraavat tiedot tai merkit puuttuvat:\n\n",
-    "\n\nWithout a title, the title screen uses the supplied team names. If all three fields are empty, it is omitted. Missing end markers omit their result screens.\n\nProceed with export?": "\n\nIlman otsikkoa otsikkoruudussa käytetään annettuja joukkueiden nimiä. Jos kaikki kolme kenttää ovat tyhjiä, ruutu jätetään pois. Puuttuvien loppumerkkien tulosruudut jätetään pois.\n\nJatketaanko vientiä?",
+    "\n\nWithout a title, the title screen uses the supplied team names. If the title, team names and subtitle are empty, it is omitted. Missing end markers omit their result screens.\n\nProceed with export?": "\n\nIlman otsikkoa otsikkoruudussa käytetään annettuja joukkueiden nimiä. Jos kaikki kolme kenttää ovat tyhjiä, ruutu jätetään pois. Puuttuvien loppumerkkien tulosruudut jätetään pois.\n\nJatketaanko vientiä?",
     "Title screen (no match title or team names provided)": "Otsikkoruutu (ottelun otsikkoa tai joukkueiden nimiä ei ole annettu)",
     "Missing export screens": "Viennistä puuttuvia ruutuja",
     "The following screens will be omitted because their information or markers are missing:\n\n": "Seuraavat ruudut jätetään pois, koska niiden tiedot tai merkit puuttuvat:\n\n",

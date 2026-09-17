@@ -148,6 +148,12 @@ Open **Help → Hotkeys** to see all editor shortcuts.
 
 Primary actions are available through visible controls; shortcuts are supporting controls.
 
+Match details includes an optional **Title-screen subtitle** below the title and
+**Final-result subtitle** below the scores. These work in Match and Solo modes,
+are saved with the project, and appear in smaller text using the screen's font
+and color. A title subtitle alone keeps the title screen enabled. The final
+subtitle appears on the final-result screen when a game-end marker is present.
+
 The playback speed dropdown beside the playback buttons offers **0.25×–3×**,
 starting at **1×**. It applies to normal playback and highlight previews only;
 exports and marked timestamps retain their original timing. Skip amounts remain
@@ -161,7 +167,7 @@ Solo mode does not require a second team. The mode is saved with the project;
 older projects open in Match mode. Switching modes preserves hidden match fields.
 
 The title screen uses only the match title and team names you provide. If the
-title is empty, supplied team names become the heading. If all these fields are
+title is empty, supplied team names become the heading. If these fields and the subtitle are
 blank, export skips the title screen and opening transition; the duration
 estimate reflects this automatically.
 

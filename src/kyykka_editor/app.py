@@ -164,6 +164,10 @@ class ProjectDialog(QDialog):
         self.setMinimumWidth(560)
         form = QFormLayout(self)
         self.title_edit = QLineEdit(project.title)
+        self.title_subtitle_edit = QLineEdit(project.title_subtitle)
+        self.final_subtitle_edit = QLineEdit(project.final_subtitle)
+        for editor in (self.title_subtitle_edit, self.final_subtitle_edit):
+            editor.setPlaceholderText(tr("Optional"))
         self.recording_type = QComboBox()
         self.recording_type.addItems([tr("Match"), tr("Solo")])
         self.recording_type.setCurrentIndex(1 if project.solo else 0)
@@ -199,6 +203,7 @@ class ProjectDialog(QDialog):
             score.setRange(-100, 100)
             score.setValue(value)
         form.addRow(tr("Match title"), self.title_edit)
+        form.addRow(tr("Title-screen subtitle"), self.title_subtitle_edit)
         form.addRow(tr("Video"), video_row)
         form.addRow(tr("Team 1"), self.team_one_edit)
         form.addRow(tr("Team 1 players"), self.players_one)
@@ -224,6 +229,7 @@ class ProjectDialog(QDialog):
         score_grid.addWidget(self.scores[1], 2, 1)
         score_grid.addWidget(self.scores[3], 2, 2)
         form.addRow(tr("Scores"), score_grid)
+        form.addRow(tr("Final-result subtitle"), self.final_subtitle_edit)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
@@ -271,6 +277,8 @@ class ProjectDialog(QDialog):
     def apply_to(self, project: EditorProject) -> None:
         project.solo = self.recording_type.currentIndex() == 1
         project.title = self.title_edit.text().strip()
+        project.title_subtitle = self.title_subtitle_edit.text().strip()
+        project.final_subtitle = self.final_subtitle_edit.text().strip()
         project.video_path = self.video_path
         project.team_one = self.team_one_edit.text().strip()
         project.team_two = self.team_two_edit.text().strip()
@@ -1858,11 +1866,11 @@ class MainWindow(QMainWindow):
                 + "\n".join(missing_markers)
                 + (
                     tr(
-                        "\n\nWithout a title, the title screen uses the player name. If both are empty, it is omitted. Missing end markers omit their result screens.\n\nProceed with export?"
+                        "\n\nWithout a title, the title screen uses the player name. If the title, player name and subtitle are empty, it is omitted. Missing end markers omit their result screens.\n\nProceed with export?"
                     )
                     if self.project.solo
                     else tr(
-                        "\n\nWithout a title, the title screen uses the supplied team names. If all three fields are empty, it is omitted. Missing end markers omit their result screens.\n\nProceed with export?"
+                        "\n\nWithout a title, the title screen uses the supplied team names. If the title, team names and subtitle are empty, it is omitted. Missing end markers omit their result screens.\n\nProceed with export?"
                     )
                 ),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,

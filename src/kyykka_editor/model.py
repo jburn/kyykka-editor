@@ -37,6 +37,8 @@ class EditorProject:
     final_style: CardStyle = field(default_factory=CardStyle)
     video_path: str = ""
     title: str = ""
+    title_subtitle: str = ""
+    final_subtitle: str = ""
     team_one: str = ""
     team_two: str = ""
     team_one_players: list[str] = field(default_factory=list)

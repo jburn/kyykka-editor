@@ -186,6 +186,26 @@ def title_card_text(project: EditorProject) -> tuple[str, str]:
     return title, teams if teams and teams.casefold() not in title.casefold() else ""
 
 
+def has_title_card(project: EditorProject) -> bool:
+    return bool(title_card_text(project)[0] or project.title_subtitle.strip())
+
+
+def _draw_subtitle(painter: QPainter, text: str, style: CardStyle, size: tuple[int, int]) -> None:
+    if not text.strip():
+        return
+    width, height = size
+    area = QRect(width // 12, height * 4 // 5, width * 5 // 6, height // 8)
+    font_size = max(12, height // 32)
+    while True:
+        painter.setFont(QFont(style.font_family, font_size))
+        if painter.fontMetrics().horizontalAdvance(text.strip()) <= area.width() or font_size <= 10:
+            break
+        font_size -= 1
+    painter.setPen(QColor(style.text_color))
+    text = painter.fontMetrics().elidedText(text.strip(), Qt.TextElideMode.ElideRight, area.width())
+    painter.drawText(area, Qt.AlignmentFlag.AlignCenter, text)
+
+
 def create_title_card(project: EditorProject, path: Path, size: tuple[int, int]) -> None:
     width, height = size
     style = project.title_style
@@ -209,6 +229,7 @@ def create_title_card(project: EditorProject, path: Path, size: tuple[int, int])
             Qt.AlignmentFlag.AlignCenter,
             matchup,
         )
+    _draw_subtitle(painter, project.title_subtitle, style, size)
     painter.end()
     if not image.save(str(path), "PNG"):
         raise RenderError(tr("Could not create the title screen image"))
@@ -318,6 +339,8 @@ def create_score_card(
             Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
             team_two_name,
         )
+    if final:
+        _draw_subtitle(painter, project.final_subtitle, style, size)
     painter.end()
     if not image.save(str(path), "PNG"):
         raise RenderError(tr("Could not create the score screen image"))
@@ -409,7 +432,7 @@ def estimate_export(project: EditorProject, duration_ms: int) -> tuple[int, int 
         and project.game_end_ms < project.round_one_end_ms
     ):
         return len(included), None
-    segments = [("title", TITLE_DURATION_MS / 1_000)] if title_card_text(project)[0] else []
+    segments = [("title", TITLE_DURATION_MS / 1_000)] if has_title_card(project) else []
     count = 0
     groups = (
         [included]
@@ -532,7 +555,7 @@ def _render_highlights(
 
     width, height = source_dimensions(project.video_path)
     input_index = 1
-    if title_card_text(project)[0]:
+    if has_title_card(project):
         title_path = output_path.parent / f".kyykka-title-{uuid.uuid4().hex}.png"
         temporary_paths.append(title_path)
         create_title_card(project, title_path, (width, height))
