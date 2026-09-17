@@ -13,6 +13,8 @@ class Impact:
     thrower: str = field(default="", compare=False)
     pre_roll_ms: int | None = field(default=None, compare=False)
     post_roll_ms: int | None = field(default=None, compare=False)
+    sound_path: str = field(default="", compare=False)
+    sound_at: str = field(default="impact", compare=False)
 
     def __post_init__(self) -> None:
         if self.timestamp_ms < 0:

@@ -569,7 +569,18 @@ def _render_highlights(
         ]
         impact_groups = [first, second]
 
-    has_audio = source_has_audio(project.video_path)
+    source_audio = source_has_audio(project.video_path)
+    effects = [
+        impact
+        for impact in included_impacts
+        if impact.sound_path
+        and _impact_bounds(project, impact, included_impacts, duration_ms)[1]
+        > _impact_bounds(project, impact, included_impacts, duration_ms)[0]
+    ]
+    for impact in effects:
+        if not Path(impact.sound_path).is_file() or not source_has_audio(impact.sound_path):
+            raise RenderError(tr("Could not load sound effect: {path}", path=impact.sound_path))
+    has_audio = source_audio or bool(effects)
     title_seconds = TITLE_DURATION_MS / 1_000
     score_card_seconds = SCORE_CARD_DURATION_MS / 1_000
     frame_rate = source_frame_rate(project.video_path)
@@ -708,11 +719,32 @@ def _render_highlights(
             segment_kinds.append("clip")
             segment_durations.append(end - start)
             if has_audio:
-                filters.append(
-                    f"[0:a]atrim=start={start:.3f}:end={end:.3f},aresample=48000,"
-                    "aformat=sample_rates=48000:channel_layouts=stereo,"
-                    f"asetpts=N/SR/TB[a{clip_index}]"
-                )
+                if source_audio:
+                    filters.append(
+                        f"[0:a]atrim=start={start:.3f}:end={end:.3f},aresample=48000,"
+                        "aformat=sample_rates=48000:channel_layouts=stereo,"
+                        f"asetpts=N/SR/TB,apad,atrim=duration={end - start:.3f}[original{clip_index}]"
+                    )
+                else:
+                    filters.append(
+                        f"anullsrc=r=48000:cl=stereo,atrim=duration={end - start:.3f}[original{clip_index}]"
+                    )
+                if impact.sound_path:
+                    command.extend(["-i", impact.sound_path])
+                    delay = (
+                        0
+                        if impact.sound_at == "start"
+                        else max(0, round(impact.timestamp_ms - start * 1000))
+                    )
+                    filters.append(
+                        f"[{input_index}:a]aresample=48000,aformat=sample_rates=48000:channel_layouts=stereo,asetpts=N/SR/TB,atrim=duration={end - start:.3f},adelay={delay}:all=1[effect{clip_index}]"
+                    )
+                    input_index += 1
+                    filters.append(
+                        f"[original{clip_index}][effect{clip_index}]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95:latency=1,atrim=duration={end - start:.3f}[a{clip_index}]"
+                    )
+                else:
+                    filters.append(f"[original{clip_index}]anull[a{clip_index}]")
                 audio_labels.append(f"[a{clip_index}]")
             clip_index += 1
         if group_index == 0 and project.round_one_end_ms is not None:

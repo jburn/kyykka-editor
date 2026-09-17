@@ -320,10 +320,13 @@ class EditMarkDialog(QDialog):
         post_roll_ms: int | None = None,
         default_pre_roll_ms: int = 4000,
         default_post_roll_ms: int = 3000,
+        sound_path: str = "",
+        sound_at: str = "impact",
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("Edit throw") if thrower is not None else tr("Edit event"))
         self.minimum_ms, self.maximum_ms = minimum_ms, maximum_ms
+        self.sound_path = sound_path
         form = QFormLayout(self)
         self.timestamp_edit = QLineEdit(format_timestamp(timestamp_ms))
         self.timestamp_edit.setMaxLength(
@@ -374,6 +377,22 @@ class EditMarkDialog(QDialog):
                 row.addWidget(spin)
                 form.addRow(tr(label), row)
             form.addRow(QLabel(tr("Uncheck Override to use the main timing settings.")))
+            self.sound_button = QPushButton(
+                Path(sound_path).name if sound_path else tr("Choose sound…")
+            )
+            self.sound_button.setToolTip(sound_path)
+            self.sound_button.clicked.connect(self._choose_sound)
+            clear_sound = QPushButton(tr("Remove sound"))
+            clear_sound.clicked.connect(self._remove_sound)
+            sound_row = QHBoxLayout()
+            sound_row.addWidget(self.sound_button)
+            sound_row.addWidget(clear_sound)
+            form.addRow(tr("Sound effect"), sound_row)
+            self.sound_position = QComboBox()
+            self.sound_position.addItem(tr("Clip start"), "start")
+            self.sound_position.addItem(tr("Impact moment"), "impact")
+            self.sound_position.setCurrentIndex(0 if sound_at == "start" else 1)
+            form.addRow(tr("Play sound at"), self.sound_position)
         self.validation_label = QLabel(
             tr(
                 "Enter a timestamp between {start} and {end} (hh:mm:ss.mmm).",
@@ -400,6 +419,20 @@ class EditMarkDialog(QDialog):
         form.addRow(self.buttons)
         self.timestamp_edit.textChanged.connect(self._validate)
         self._validate()
+
+    def _choose_sound(self) -> None:
+        filename, _ = QFileDialog.getOpenFileName(
+            self, tr("Choose sound…"), "", tr("Audio files (*.wav *.mp3 *.ogg *.flac *.m4a *.aac)")
+        )
+        if filename:
+            self.sound_path = str(Path(filename).resolve())
+            self.sound_button.setText(Path(filename).name)
+            self.sound_button.setToolTip(filename)
+
+    def _remove_sound(self) -> None:
+        self.sound_path = ""
+        self.sound_button.setText(tr("Choose sound…"))
+        self.sound_button.setToolTip("")
 
     def timestamp_ms(self) -> int | None:
         if not re.fullmatch(
@@ -1561,6 +1594,8 @@ class MainWindow(QMainWindow):
                 post_roll_ms=impact.post_roll_ms if impact is not None else None,
                 default_pre_roll_ms=self.project.pre_roll_ms,
                 default_post_roll_ms=self.project.post_roll_ms,
+                sound_path=impact.sound_path if impact is not None else "",
+                sound_at=impact.sound_at if impact is not None else "impact",
             )
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
@@ -1578,17 +1613,28 @@ class MainWindow(QMainWindow):
                 after = (
                     dialog.after_spin.value() * 1000 if dialog.override_after.isChecked() else None
                 )
-                if (updated_timestamp, updated_thrower, before, after) == (
+                if (
+                    updated_timestamp,
+                    updated_thrower,
+                    before,
+                    after,
+                    dialog.sound_path,
+                    dialog.sound_position.currentData(),
+                ) == (
                     impact.timestamp_ms,
                     impact.thrower,
                     impact.pre_roll_ms,
                     impact.post_roll_ms,
+                    impact.sound_path,
+                    impact.sound_at,
                 ):
                     return
                 self._record_undo("Edit throw")
                 impact.timestamp_ms = updated_timestamp
                 impact.thrower = updated_thrower
                 impact.pre_roll_ms, impact.post_roll_ms = before, after
+                impact.sound_path = dialog.sound_path
+                impact.sound_at = dialog.sound_position.currentData()
                 self.project.impacts.sort()
             elif kind == "Round 1 end":
                 if updated_timestamp == timestamp:

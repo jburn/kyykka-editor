@@ -148,6 +148,12 @@ Open **Help → Hotkeys** to see all editor shortcuts.
 
 Primary actions are available through visible controls; shortcuts are supporting controls.
 
+In **Edit throw**, choose a **Sound effect** and set it to **Clip start** or
+**Impact moment**. It applies only to that throw, mixes with the original audio,
+and is cut off at the clip's end. **Remove sound** clears it. The project stores
+a reference to the audio file, so keep that file available for export. The
+in-player highlight preview plays source footage only; effects are applied on export.
+
 Export warns when highlight clips overlap and would repeat source footage. The
 warning lists throw timestamps and overlap durations, including timing overrides
 and first/last-throw extensions. Cancel to adjust timing, or choose Yes to export
