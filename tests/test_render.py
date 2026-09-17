@@ -53,8 +53,52 @@ from kyykka_editor.render import (
     ],
 )
 def test_export_estimate(impacts, round_end, game_end, expected):
-    project = EditorProject(impacts=impacts, round_one_end_ms=round_end, game_end_ms=game_end)
+    project = EditorProject(
+        title="Match", impacts=impacts, round_one_end_ms=round_end, game_end_ms=game_end
+    )
     assert estimate_export(project, 30_000) == expected
+
+
+@pytest.mark.parametrize(
+    "title,one,two,expected",
+    [
+        ("", "", "", ("", "")),
+        ("  ", " ", "", ("", "")),
+        ("Final", "", "", ("Final", "")),
+        ("", "One", "Two", ("One vs. Two", "")),
+        ("", "One", "", ("One", "")),
+        ("Final", "One", "Two", ("Final", "One vs. Two")),
+    ],
+)
+def test_title_uses_only_supplied_content(title, one, two, expected):
+    from kyykka_editor.render import title_card_text
+
+    assert title_card_text(EditorProject(title=title, team_one=one, team_two=two)) == expected
+
+
+def test_estimate_without_title_does_not_crossfade_first_two_throws():
+    project = EditorProject(impacts=[Impact(10000), Impact(20000)])
+    assert estimate_export(project, 30000) == (2, 20000)
+
+
+@pytest.mark.parametrize("team_one,team_two", [("Only team", ""), ("", "Only team")])
+def test_title_card_draws_single_team_without_fallback(
+    qapp, tmp_path, monkeypatch, team_one, team_two
+):
+    from PySide6.QtGui import QPainter
+
+    drawn = []
+
+    class RecordingPainter(QPainter):
+        def drawText(self, *args):
+            drawn.append(args[-1])
+            return super().drawText(*args)
+
+    monkeypatch.setattr(render_module, "QPainter", RecordingPainter)
+    render_module.create_title_card(
+        EditorProject(team_one=team_one, team_two=team_two), tmp_path / "title.png", (640, 360)
+    )
+    assert drawn == ["Only team"]
 
 
 def test_export_estimate_waits_for_video_duration():
@@ -63,7 +107,7 @@ def test_export_estimate_waits_for_video_duration():
 
 def test_overrides_apply_to_estimate_and_intervals():
     impact = Impact(10000, pre_roll_ms=0, post_roll_ms=1000)
-    project = EditorProject(impacts=[impact], pre_roll_ms=6000, post_roll_ms=9000)
+    project = EditorProject(title="Match", impacts=[impact], pre_roll_ms=6000, post_roll_ms=9000)
     assert estimate_export(project, 30000) == (1, 10000)
     assert build_intervals(project, 30000) == [(10, 11)]
     impact.pre_roll_ms = None

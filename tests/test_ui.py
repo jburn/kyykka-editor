@@ -609,6 +609,54 @@ def test_skip_settings_apply_to_buttons_shortcuts_and_persist(qapp, tmp_path, mo
     restored.close()
 
 
+@pytest.mark.parametrize("proceed", [False, True])
+def test_missing_title_export_confirmation(qapp, monkeypatch, proceed):
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+    from kyykka_editor.i18n import tr
+
+    window = MainWindow()
+    window.project = EditorProject(
+        title="  ", impacts=[Impact(1000)], round_one_end_ms=2000, game_end_ms=3000
+    )
+    prompts, file_dialogs = [], []
+
+    def confirm(parent, title, message, *args):
+        prompts.append(message)
+        return QMessageBox.StandardButton.Yes if proceed else QMessageBox.StandardButton.No
+
+    def choose_file(*args, **kwargs):
+        file_dialogs.append(True)
+        return "", ""
+
+    monkeypatch.setattr(QMessageBox, "question", confirm)
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", choose_file)
+    window.export_video()
+    assert len(prompts) == 1
+    for label in ("Match title", "Team 1 name", "Team 2 name"):
+        assert tr(label) in prompts[0]
+    assert bool(file_dialogs) == proceed
+    window.project.title = "Match"
+    window.project.team_one = "One"
+    window.project.team_two = "Two"
+    prompts.clear()
+    window.export_video()
+    assert not prompts
+    for field, label in (
+        ("title", "Match title"),
+        ("team_one", "Team 1 name"),
+        ("team_two", "Team 2 name"),
+    ):
+        original = getattr(window.project, field)
+        setattr(window.project, field, "  ")
+        prompts.clear()
+        window.export_video()
+        assert len(prompts) == 1
+        assert tr(label) in prompts[0]
+        setattr(window.project, field, original)
+    window.close()
+
+
 def _set_ready_video(window, monkeypatch):
     window.project.video_path = str(Path("match.mp4").resolve())
     monkeypatch.setattr(

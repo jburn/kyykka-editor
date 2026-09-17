@@ -148,6 +148,18 @@ Open **Help → Hotkeys** to see all editor shortcuts.
 
 Primary actions are available through visible controls; shortcuts are supporting controls.
 
+For an individual recording, choose **Solo** under **Recording type** at the top
+of Match details. Enter a player name and their round scores. The title screen
+uses the supplied title or player name; result screens show the player's score
+without an opponent or winner declaration. The final result totals both rounds.
+Solo mode does not require a second team. The mode is saved with the project;
+older projects open in Match mode. Switching modes preserves hidden match fields.
+
+The title screen uses only the match title and team names you provide. If the
+title is empty, supplied team names become the heading. If all these fields are
+blank, export skips the title screen and opening transition; the duration
+estimate reflects this automatically.
+
 **Settings → Preferences** sets independent backward and forward skip lengths
 from 1 to 120 seconds. Defaults are 3 seconds backward and 5 seconds forward.
 The settings apply to both playback buttons and their keyboard shortcuts, and

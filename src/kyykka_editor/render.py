@@ -174,6 +174,18 @@ def _card_background(style: CardStyle, size: tuple[int, int]) -> QImage:
     return image
 
 
+def title_card_text(project: EditorProject) -> tuple[str, str]:
+    title = project.title.strip()
+    teams = " vs. ".join(
+        name.strip()
+        for name in ((project.team_one,) if project.solo else (project.team_one, project.team_two))
+        if name.strip()
+    )
+    if not title:
+        return teams, ""
+    return title, teams if teams and teams.casefold() not in title.casefold() else ""
+
+
 def create_title_card(project: EditorProject, path: Path, size: tuple[int, int]) -> None:
     width, height = size
     style = project.title_style
@@ -182,12 +194,7 @@ def create_title_card(project: EditorProject, path: Path, size: tuple[int, int])
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setPen(QColor(style.text_color))
 
-    title = project.title or "Kyykkä"
-    matchup = ""
-    if project.team_one and project.team_two:
-        candidate = f"{project.team_one} vs. {project.team_two}"
-        if candidate.casefold() not in title.casefold():
-            matchup = candidate
+    title, matchup = title_card_text(project)
 
     painter.setFont(QFont(style.font_family, max(24, height // 16), QFont.Weight.Bold))
     painter.drawText(
@@ -230,7 +237,7 @@ def create_score_card(
         heading,
     )
     team_font_size = max(24, height // 17)
-    team_one_name = project.team_one or tr("Team 1")
+    team_one_name = project.team_one.strip() if project.solo else project.team_one or tr("Team 1")
     team_two_name = project.team_two or tr("Team 2")
     winner_name = (
         team_one_name if one_score > two_score else team_two_name if two_score > one_score else None
@@ -243,7 +250,7 @@ def create_score_card(
         font = QFont(style.font_family, team_font_size)
         if not final:
             font.setBold(True)
-        elif winner_name == name:
+        elif not project.solo and winner_name == name:
             font.setBold(True)
             font.setUnderline(True)
         return font
@@ -270,6 +277,10 @@ def create_score_card(
             + name_score_gap
             + team_two_width
         )
+        if project.solo:
+            total_width = (
+                team_one_width + (name_score_gap if team_one_name else 0) + score_one_width
+            )
         if total_width <= width * 9 // 10 or team_font_size <= 14:
             break
         team_font_size -= 2
@@ -284,7 +295,7 @@ def create_score_card(
         Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
         team_one_name,
     )
-    x += team_one_width + name_score_gap
+    x += team_one_width + (name_score_gap if team_one_name else 0)
 
     def draw_score(score: int, box_width: int, box_x: int) -> None:
         box = QRect(box_x, row_y, box_width, row_height)
@@ -296,16 +307,17 @@ def create_score_card(
         painter.drawText(box, Qt.AlignmentFlag.AlignCenter, str(score))
 
     draw_score(one_score, score_one_width, x)
-    x += score_one_width + center_gap
-    draw_score(two_score, score_two_width, x)
-    x += score_two_width + name_score_gap
-    painter.setPen(QColor(style.text_color))
-    painter.setFont(team_font(team_two_name))
-    painter.drawText(
-        QRect(x, row_y, team_two_width, row_height),
-        Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
-        team_two_name,
-    )
+    if not project.solo:
+        x += score_one_width + center_gap
+        draw_score(two_score, score_two_width, x)
+        x += score_two_width + name_score_gap
+        painter.setPen(QColor(style.text_color))
+        painter.setFont(team_font(team_two_name))
+        painter.drawText(
+            QRect(x, row_y, team_two_width, row_height),
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+            team_two_name,
+        )
     painter.end()
     if not image.save(str(path), "PNG"):
         raise RenderError(tr("Could not create the score screen image"))
@@ -397,7 +409,7 @@ def estimate_export(project: EditorProject, duration_ms: int) -> tuple[int, int 
         and project.game_end_ms < project.round_one_end_ms
     ):
         return len(included), None
-    segments = [("title", TITLE_DURATION_MS / 1_000)]
+    segments = [("title", TITLE_DURATION_MS / 1_000)] if title_card_text(project)[0] else []
     count = 0
     groups = (
         [included]
@@ -419,7 +431,7 @@ def estimate_export(project: EditorProject, duration_ms: int) -> tuple[int, int 
         segments.append(("final", SCORE_CARD_DURATION_MS / 1_000))
     if not count:
         return 0, 0
-    if len(segments) >= 2 and segments[1][0] == "clip":
+    if len(segments) >= 2 and segments[0][0] == "title" and segments[1][0] == "clip":
         first, second = segments[0][1], segments[1][1]
         segments[:2] = [("intro", first + second - min(CROSSFADE_SECONDS, first / 2, second / 2))]
     if len(segments) >= 2 and segments[-1][0] == "final" and segments[-2][0] in {"clip", "intro"}:
@@ -519,48 +531,50 @@ def _render_highlights(
     segment_durations: list[float] = []
 
     width, height = source_dimensions(project.video_path)
-    title_path = output_path.parent / f".kyykka-title-{uuid.uuid4().hex}.png"
-    temporary_paths.append(title_path)
-    create_title_card(project, title_path, (width, height))
-    command.extend(
-        [
-            "-loop",
-            "1",
-            "-framerate",
-            frame_rate_ffmpeg,
-            "-t",
-            f"{title_seconds:.3f}",
-            "-i",
-            str(title_path),
-        ]
-    )
-    filters.append(
-        f"[1:v]scale={width}:{height},setsar=1,format=yuv420p,"
-        f"trim=duration={title_seconds:.3f},settb=AVTB,"
-        f"setpts=N/(({frame_rate_ffmpeg})*TB)[titlev]"
-    )
-    video_labels.append("[titlev]")
-    segment_kinds.append("title")
-    segment_durations.append(title_seconds)
-    if has_audio:
+    input_index = 1
+    if title_card_text(project)[0]:
+        title_path = output_path.parent / f".kyykka-title-{uuid.uuid4().hex}.png"
+        temporary_paths.append(title_path)
+        create_title_card(project, title_path, (width, height))
         command.extend(
             [
-                "-f",
-                "lavfi",
+                "-loop",
+                "1",
+                "-framerate",
+                frame_rate_ffmpeg,
                 "-t",
                 f"{title_seconds:.3f}",
                 "-i",
-                "anullsrc=sample_rate=48000:channel_layout=stereo",
+                str(title_path),
             ]
         )
         filters.append(
-            f"[2:a]atrim=duration={title_seconds:.3f},"
-            "aformat=sample_rates=48000:channel_layouts=stereo,"
-            "asetpts=N/SR/TB[titlea]"
+            f"[1:v]scale={width}:{height},setsar=1,format=yuv420p,"
+            f"trim=duration={title_seconds:.3f},settb=AVTB,"
+            f"setpts=N/(({frame_rate_ffmpeg})*TB)[titlev]"
         )
-        audio_labels.append("[titlea]")
+        video_labels.append("[titlev]")
+        segment_kinds.append("title")
+        segment_durations.append(title_seconds)
+        if has_audio:
+            command.extend(
+                [
+                    "-f",
+                    "lavfi",
+                    "-t",
+                    f"{title_seconds:.3f}",
+                    "-i",
+                    "anullsrc=sample_rate=48000:channel_layout=stereo",
+                ]
+            )
+            filters.append(
+                f"[2:a]atrim=duration={title_seconds:.3f},"
+                "aformat=sample_rates=48000:channel_layouts=stereo,"
+                "asetpts=N/SR/TB[titlea]"
+            )
+            audio_labels.append("[titlea]")
 
-    input_index = 3 if has_audio else 2
+        input_index = 3 if has_audio else 2
     clip_index = 0
     card_index = 0
 

@@ -31,6 +31,7 @@ class CardStyle:
 
 @dataclass(slots=True)
 class EditorProject:
+    solo: bool = False
     title_style: CardStyle = field(default_factory=CardStyle)
     round_style: CardStyle = field(default_factory=CardStyle)
     final_style: CardStyle = field(default_factory=CardStyle)
@@ -66,6 +67,12 @@ class EditorProject:
         )
 
     @property
+    def throwers(self) -> list[str]:
+        if self.solo:
+            return [self.team_one] if self.team_one else []
+        return self.team_one_players + self.team_two_players
+
+    @property
     def team_one_total(self) -> int:
         return self.team_one_round_one_score + self.team_one_round_two_score
 
@@ -75,6 +82,8 @@ class EditorProject:
 
     @property
     def winner(self) -> str | None:
+        if self.solo:
+            return None
         if self.team_one_total == self.team_two_total:
             return None
         if self.team_one_total > self.team_two_total:
@@ -91,7 +100,11 @@ def format_timestamp(milliseconds: int) -> str:
 
 def default_export_filename(project: EditorProject) -> str:
     title = project.title.strip() or tr("Kyykka highlights")
-    teams = [name.strip() for name in (project.team_one, project.team_two) if name.strip()]
+    teams = [
+        name.strip()
+        for name in ((project.team_one,) if project.solo else (project.team_one, project.team_two))
+        if name.strip()
+    ]
     if teams and not all(name.casefold() in title.casefold() for name in teams):
         title = f"{title} - {' vs. '.join(teams)}"
 

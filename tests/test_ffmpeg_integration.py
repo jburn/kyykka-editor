@@ -17,8 +17,9 @@ pytestmark = pytest.mark.integration
     not shutil.which("ffmpeg") or not shutil.which("ffprobe"),
     reason="FFmpeg and FFprobe are required",
 )
+@pytest.mark.parametrize("with_title", [True, False])
 def test_real_render_is_windows_compatible_and_keeps_source_rate(
-    tmp_path: Path, qapp: QApplication
+    tmp_path: Path, qapp: QApplication, with_title: bool
 ) -> None:
     source = tmp_path / "source.mp4"
     output = tmp_path / "highlights.mp4"
@@ -58,6 +59,8 @@ def test_real_render_is_windows_compatible_and_keeps_source_rate(
         game_end_ms=3_000,
     )
     updates = []
+    if not with_title:
+        project.title = project.team_one = project.team_two = ""
 
     def progress(percent):
         updates.append(percent)

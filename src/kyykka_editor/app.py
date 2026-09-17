@@ -164,6 +164,10 @@ class ProjectDialog(QDialog):
         self.setMinimumWidth(560)
         form = QFormLayout(self)
         self.title_edit = QLineEdit(project.title)
+        self.recording_type = QComboBox()
+        self.recording_type.addItems([tr("Match"), tr("Solo")])
+        self.recording_type.setCurrentIndex(1 if project.solo else 0)
+        form.addRow(tr("Recording type"), self.recording_type)
         self.team_one_edit = QLineEdit(project.team_one)
         self.team_two_edit = QLineEdit(project.team_two)
         self.video_path = project.video_path
@@ -206,7 +210,9 @@ class ProjectDialog(QDialog):
         self.score_team_one = QLabel(project.team_one or tr("Team 1"))
         self.score_team_two = QLabel(project.team_two or tr("Team 2"))
         self.team_one_edit.textChanged.connect(
-            lambda name: self.score_team_one.setText(name.strip() or tr("Team 1"))
+            lambda name: self.score_team_one.setText(
+                name.strip() or tr("Player" if self.recording_type.currentIndex() else "Team 1")
+            )
         )
         self.team_two_edit.textChanged.connect(
             lambda name: self.score_team_two.setText(name.strip() or tr("Team 2"))
@@ -224,6 +230,23 @@ class ProjectDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         form.addRow(buttons)
+
+        def update_mode() -> None:
+            solo = self.recording_type.currentIndex() == 1
+            form.labelForField(self.team_one_edit).setText(tr("Player" if solo else "Team 1"))
+            for widget in (self.players_one, self.team_two_edit, self.players_two):
+                form.setRowVisible(widget, not solo)
+            for widget in (self.score_team_two, self.scores[1], self.scores[3]):
+                widget.setVisible(not solo)
+            self.score_team_one.setText(
+                self.team_one_edit.text().strip() or tr("Player" if solo else "Team 1")
+            )
+            form.invalidate()
+            form.activate()
+            self.resize(self.width(), self.sizeHint().height())
+
+        self.recording_type.currentIndexChanged.connect(update_mode)
+        update_mode()
 
     def _browse_video(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(
@@ -246,6 +269,7 @@ class ProjectDialog(QDialog):
             self.video_label.setToolTip("")
 
     def apply_to(self, project: EditorProject) -> None:
+        project.solo = self.recording_type.currentIndex() == 1
         project.title = self.title_edit.text().strip()
         project.video_path = self.video_path
         project.team_one = self.team_one_edit.text().strip()
@@ -1257,7 +1281,7 @@ class MainWindow(QMainWindow):
     def _update_project_title(self) -> None:
         name = self.project_path.name if self.project_path else tr("Untitled project")
         modified = project_data(self.project) != self.saved_project
-        self.setWindowTitle(f"{'* ' if modified else ''}{name} — Kyykkä Editor")
+        self.setWindowTitle(f"{'* ' if modified else ''}{name} - Kyykkä Editor")
 
     def _autosave(self) -> None:
         self._update_project_title()
@@ -1489,7 +1513,7 @@ class MainWindow(QMainWindow):
                 position,
                 minimum,
                 maximum,
-                self.project.team_one_players + self.project.team_two_players,
+                self.project.throwers,
                 impact.thrower if impact is not None else None,
                 self,
                 pre_roll_ms=impact.pre_roll_ms if impact is not None else None,
@@ -1779,7 +1803,7 @@ class MainWindow(QMainWindow):
     def _load_form(self) -> None:
         self.thrower_combo.clear()
         self.thrower_combo.addItem("")
-        self.thrower_combo.addItems(self.project.team_one_players + self.project.team_two_players)
+        self.thrower_combo.addItems(self.project.throwers)
         self._refresh_impacts()
         if self.project.video_path:
             self._load_video(Path(self.project.video_path))
@@ -1798,17 +1822,36 @@ class MainWindow(QMainWindow):
             )
             return
         missing_markers = []
+        for value, label in (
+            (self.project.title, "Match title"),
+            (self.project.team_one, "Player name" if self.project.solo else "Team 1 name"),
+            ("unused" if self.project.solo else self.project.team_two, "Team 2 name"),
+        ):
+            if not value.strip():
+                missing_markers.append(tr(label))
         if self.project.round_one_end_ms is None:
             missing_markers.append(tr("Round 1 end (round-one result screen)"))
         if self.project.game_end_ms is None:
-            missing_markers.append(tr("Game end (final result/winner screen)"))
+            missing_markers.append(
+                tr("End (final result screen)")
+                if self.project.solo
+                else tr("Game end (final result/winner screen)")
+            )
         if missing_markers:
             answer = QMessageBox.question(
                 self,
-                tr("Missing end markers"),
-                tr("The following markers have not been added:\n\n")
+                tr("Missing match information"),
+                tr("The following information or markers are missing:\n\n")
                 + "\n".join(missing_markers)
-                + tr("\n\nProceed without these markers and their result screens?"),
+                + (
+                    tr(
+                        "\n\nWithout a title, the title screen uses the player name. If both are empty, it is omitted. Missing end markers omit their result screens.\n\nProceed with export?"
+                    )
+                    if self.project.solo
+                    else tr(
+                        "\n\nWithout a title, the title screen uses the supplied team names. If all three fields are empty, it is omitted. Missing end markers omit their result screens.\n\nProceed with export?"
+                    )
+                ),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )

@@ -11,7 +11,7 @@ from .model import CardStyle, EditorProject, Impact
 
 
 def project_data(project: EditorProject) -> dict:
-    return {"version": 2, "project": asdict(project)}
+    return {"version": 3, "project": asdict(project)}
 
 
 def write_project(path: Path, project: EditorProject) -> None:
@@ -31,10 +31,12 @@ def write_project(path: Path, project: EditorProject) -> None:
 def read_project(path: Path) -> EditorProject:
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
-        if document["version"] not in (1, 2):
+        if document["version"] not in (1, 2, 3):
             raise ValueError("Unsupported project version")
         data = document["project"]
         defaults = asdict(EditorProject())
+        if document["version"] < 3 and isinstance(data, dict):
+            data.setdefault("solo", False)
         if document["version"] == 1 and isinstance(data, dict):
             for key in ("title_style", "round_style", "final_style"):
                 data.setdefault(key, asdict(CardStyle()))
