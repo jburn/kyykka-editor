@@ -148,6 +148,10 @@ Open **Help → Hotkeys** to see all editor shortcuts.
 
 Primary actions are available through visible controls; shortcuts are supporting controls.
 
+Round-end cards crossfade from the preceding highlight and into the next round's
+first highlight. Fades last up to one second, shortened for brief clips, and
+include audio. A fade is only added where an adjacent highlight exists.
+
 Export warns when highlight clips overlap and would repeat source footage. The
 warning lists throw timestamps and overlap durations, including timing overrides
 and first/last-throw extensions. Cancel to adjust timing, or choose Yes to export

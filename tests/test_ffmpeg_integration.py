@@ -18,8 +18,9 @@ pytestmark = pytest.mark.integration
     reason="FFmpeg and FFprobe are required",
 )
 @pytest.mark.parametrize("with_title", [True, False])
+@pytest.mark.parametrize("with_round", [False, True])
 def test_real_render_is_windows_compatible_and_keeps_source_rate(
-    tmp_path: Path, qapp: QApplication, with_title: bool
+    tmp_path: Path, qapp: QApplication, with_title: bool, with_round: bool
 ) -> None:
     source = tmp_path / "source.mp4"
     output = tmp_path / "highlights.mp4"
@@ -59,6 +60,9 @@ def test_real_render_is_windows_compatible_and_keeps_source_rate(
         game_end_ms=3_000,
     )
     updates = []
+    if with_round:
+        project.impacts = [Impact(1000, "Player"), Impact(3000, "Player")]
+        project.round_one_end_ms = 2000
     if not with_title:
         project.title = project.team_one = project.team_two = ""
 
@@ -93,7 +97,7 @@ def test_real_render_is_windows_compatible_and_keeps_source_rate(
     video = next(stream for stream in streams if stream["codec_type"] == "video")
     audio = next(stream for stream in streams if stream["codec_type"] == "audio")
     count, estimated_ms = estimate_export(project, 4_000)
-    assert count == 1
+    assert count == (2 if with_round else 1)
     assert abs(float(video["duration"]) - estimated_ms / 1000) < 0.15
     assert video["codec_name"] == "h264"
     assert video["profile"] == "High"

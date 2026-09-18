@@ -7,6 +7,7 @@ import sys
 import uuid
 from collections.abc import Callable
 from fractions import Fraction
+from itertools import pairwise
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Event
@@ -445,6 +446,24 @@ def overlapping_highlights(project: EditorProject, duration_ms: int) -> list[tup
     return overlaps
 
 
+def card_transitions(segments: list[tuple[str, float]]) -> list[tuple[int, float, str]]:
+    """Plan card/clip fades using original clip lengths, including short clips."""
+    transitions = []
+    merged = 0
+    for index, ((left, left_seconds), (right, right_seconds)) in enumerate(pairwise(segments)):
+        if (left, right) not in {
+            ("title", "clip"),
+            ("clip", "round"),
+            ("round", "clip"),
+            ("clip", "final"),
+        }:
+            continue
+        duration = min(CROSSFADE_SECONDS, left_seconds / 2, right_seconds / 2)
+        transitions.append((index - merged, duration, f"transition{index}"))
+        merged += 1
+    return transitions
+
+
 def estimate_export(project: EditorProject, duration_ms: int) -> tuple[int, int | None]:
     """Return exported clip count and approximate output milliseconds, not render time."""
     included = [
@@ -484,13 +503,8 @@ def estimate_export(project: EditorProject, duration_ms: int) -> tuple[int, int 
         segments.append(("final", SCORE_CARD_DURATION_MS / 1_000))
     if not count:
         return 0, 0
-    if len(segments) >= 2 and segments[0][0] == "title" and segments[1][0] == "clip":
-        first, second = segments[0][1], segments[1][1]
-        segments[:2] = [("intro", first + second - min(CROSSFADE_SECONDS, first / 2, second / 2))]
-    if len(segments) >= 2 and segments[-1][0] == "final" and segments[-2][0] in {"clip", "intro"}:
-        first, second = segments[-2][1], segments[-1][1]
-        segments[-2:] = [("outro", first + second - min(CROSSFADE_SECONDS, first / 2, second / 2))]
-    return count, round(sum(seconds for _, seconds in segments) * 1_000)
+    fades = sum(duration for _, duration, _ in card_transitions(segments))
+    return count, round((sum(seconds for _, seconds in segments) - fades) * 1000)
 
 
 def render_highlights(
@@ -721,12 +735,9 @@ def _render_highlights(
     if project.game_end_ms is not None:
         add_score_screen(final=True)
 
-    def crossfade_pair(index: int, output_prefix: str) -> None:
-        fade_duration = min(
-            CROSSFADE_SECONDS,
-            segment_durations[index] / 2,
-            segment_durations[index + 1] / 2,
-        )
+    transitions = card_transitions(list(zip(segment_kinds, segment_durations, strict=True)))
+
+    def crossfade_pair(index: int, fade_duration: float, output_prefix: str) -> None:
         output_video = f"[{output_prefix}v]"
         output_audio = f"[{output_prefix}a]"
         filters.append(
@@ -747,19 +758,8 @@ def _render_highlights(
         ]
         segment_kinds[index : index + 2] = [output_prefix]
 
-    if len(segment_kinds) >= 2 and segment_kinds[:2] == ["title", "clip"]:
-        crossfade_pair(0, "intro")
-
-    if (
-        len(segment_kinds) >= 2
-        and segment_kinds[-1] == "final"
-        and segment_kinds[-2]
-        in {
-            "clip",
-            "intro",
-        }
-    ):
-        crossfade_pair(len(segment_kinds) - 2, "outro")
+    for index, duration, label in transitions:
+        crossfade_pair(index, duration, label)
 
     if has_audio:
         segment_inputs = "".join(

@@ -62,10 +62,6 @@ def read_project(path: Path) -> EditorProject:
                 if not isinstance(value, list):
                     raise ValueError("Invalid impacts")
                 for impact in value:
-                    if document["version"] == 5 and isinstance(impact, dict):
-                        # Ignore removed sound effects in previously saved projects.
-                        impact.pop("sound_path", None)
-                        impact.pop("sound_at", None)
                     if not isinstance(impact, dict) or set(impact) != {
                         f.name for f in fields(Impact)
                     }:

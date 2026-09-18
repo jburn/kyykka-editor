@@ -46,7 +46,7 @@ from kyykka_editor.render import (
         ([], None, None, (0, 0)),
         ([Impact(10_000)], None, None, (1, 16_000)),
         ([Impact(10_000)], None, 20_000, (1, 23_000)),
-        ([Impact(10_000)], 15_000, 20_000, (1, 32_000)),
+        ([Impact(10_000)], 15_000, 20_000, (1, 31_000)),
         ([Impact(10_000), Impact(11_000)], None, None, (2, 23_000)),
         ([Impact(10_000), Impact(25_000)], None, 20_000, (1, 23_000)),
         ([Impact(50_000)], None, None, (0, 0)),
