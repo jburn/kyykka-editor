@@ -167,6 +167,44 @@ def test_media_subprocess_has_no_platform_flags_elsewhere(
     assert render_module._media_subprocess_options() == {}
 
 
+@pytest.mark.parametrize("final", [False, True])
+def test_scores_stay_centered_when_team_names_wrap(qapp, tmp_path, monkeypatch, final):
+    from PySide6.QtGui import QPainter
+
+    boxes, text_layouts = [], []
+
+    class Recorder(QPainter):
+        def drawRoundedRect(self, box, *args):
+            boxes.append(box)
+            return super().drawRoundedRect(box, *args)
+
+        def drawText(self, area, flags, text):
+            text_layouts.append(
+                (
+                    text,
+                    self.fontMetrics().boundingRect(area, flags, text).height(),
+                    self.fontMetrics().height(),
+                )
+            )
+            return super().drawText(area, flags, text)
+
+    monkeypatch.setattr(render_module, "QPainter", Recorder)
+    project = EditorProject(
+        team_one="A", team_two="B", team_one_round_one_score=-12, team_two_round_one_score=3
+    )
+    create_score_card(project, tmp_path / "short.png", (1280, 720), final)
+    original = list(boxes)
+    boxes.clear()
+    project.team_one = "A much longer team name that should wrap onto multiple lines"
+    create_score_card(project, tmp_path / "long.png", (1280, 720), final)
+    assert boxes == original
+    assert abs(boxes[0].left() + boxes[1].right() - 1279) <= 1
+    assert any(
+        text == project.team_one and height > line_height
+        for text, height, line_height in text_layouts
+    )
+
+
 def test_rendered_cards_and_overlay_are_valid_images(qapp: QApplication, tmp_path: Path) -> None:
     project = EditorProject(
         title="Playoffs game 3",

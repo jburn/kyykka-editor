@@ -27,6 +27,7 @@ class CardStyle:
     background_color: str = "#2a76bc"
     text_color: str = "#ffffff"
     background_image: str = ""
+    background_mode: str = "static"
 
 
 @dataclass(slots=True)

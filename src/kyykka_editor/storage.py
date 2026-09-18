@@ -11,7 +11,7 @@ from .model import CardStyle, EditorProject, Impact
 
 
 def project_data(project: EditorProject) -> dict:
-    return {"version": 6, "project": asdict(project)}
+    return {"version": 7, "project": asdict(project)}
 
 
 def write_project(path: Path, project: EditorProject) -> None:
@@ -31,7 +31,7 @@ def write_project(path: Path, project: EditorProject) -> None:
 def read_project(path: Path) -> EditorProject:
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
-        if document["version"] not in (1, 2, 3, 4, 5, 6):
+        if document["version"] not in (1, 2, 3, 4, 5, 6, 7):
             raise ValueError("Unsupported project version")
         data = document["project"]
         defaults = asdict(EditorProject())
@@ -48,12 +48,16 @@ def read_project(path: Path) -> EditorProject:
         for key, default in defaults.items():
             value = data[key]
             if key in ("title_style", "round_style", "final_style"):
+                if document["version"] < 7 and isinstance(value, dict):
+                    value.setdefault("background_mode", "static")
                 if (
                     not isinstance(value, dict)
                     or set(value) != set(asdict(CardStyle()))
                     or not all(isinstance(item, str) for item in value.values())
                 ):
                     raise ValueError("Invalid card style")
+                if value["background_mode"] not in ("static", "color", "image", "video", "freeze"):
+                    raise ValueError("Invalid background mode")
                 for color in ("background_color", "text_color"):
                     if not re.fullmatch(r"#[0-9a-fA-F]{6}", value[color]):
                         raise ValueError("Invalid card color")

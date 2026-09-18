@@ -19,8 +19,9 @@ pytestmark = pytest.mark.integration
 )
 @pytest.mark.parametrize("with_title", [True, False])
 @pytest.mark.parametrize("with_round", [False, True])
+@pytest.mark.parametrize("background_mode", ["static", "video", "freeze"])
 def test_real_render_is_windows_compatible_and_keeps_source_rate(
-    tmp_path: Path, qapp: QApplication, with_title: bool, with_round: bool
+    tmp_path: Path, qapp: QApplication, with_title: bool, with_round: bool, background_mode: str
 ) -> None:
     source = tmp_path / "source.mp4"
     output = tmp_path / "highlights.mp4"
@@ -60,6 +61,8 @@ def test_real_render_is_windows_compatible_and_keeps_source_rate(
         game_end_ms=3_000,
     )
     updates = []
+    for style in (project.title_style, project.round_style, project.final_style):
+        style.background_mode = background_mode
     if with_round:
         project.impacts = [Impact(1000, "Player"), Impact(3000, "Player")]
         project.round_one_end_ms = 2000

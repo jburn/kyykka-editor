@@ -154,9 +154,13 @@ def source_frame_rate(video_path: str) -> Fraction:
 
 
 def _card_background(style: CardStyle, size: tuple[int, int]) -> QImage:
+    if style.background_mode in ("video", "freeze"):
+        image = QImage(*size, QImage.Format.Format_ARGB32)
+        image.fill(Qt.GlobalColor.transparent)
+        return image
     image = QImage(*size, QImage.Format.Format_RGB32)
     image.fill(QColor(style.background_color))
-    if style.background_image:
+    if style.background_mode in ("static", "image") and style.background_image:
         background = QImage(style.background_image)
         if background.isNull():
             raise RenderError(
@@ -277,49 +281,47 @@ def create_score_card(
             font.setUnderline(True)
         return font
 
-    while True:
-        score_font = QFont(style.font_family, team_font_size, QFont.Weight.Bold)
-        painter.setFont(team_font(team_one_name))
-        team_one_width = painter.fontMetrics().horizontalAdvance(team_one_name)
-        painter.setFont(team_font(team_two_name))
-        team_two_width = painter.fontMetrics().horizontalAdvance(team_two_name)
-        painter.setFont(score_font)
-        score_one_width = (
-            painter.fontMetrics().horizontalAdvance(str(one_score)) + 2 * score_padding
+    score_font = QFont(style.font_family, team_font_size, QFont.Weight.Bold)
+    painter.setFont(score_font)
+    box_width = (
+        max(
+            painter.fontMetrics().horizontalAdvance(str(one_score)),
+            painter.fontMetrics().horizontalAdvance(str(two_score)) if not project.solo else 0,
         )
-        score_two_width = (
-            painter.fontMetrics().horizontalAdvance(str(two_score)) + 2 * score_padding
-        )
-        total_width = (
-            team_one_width
-            + name_score_gap
-            + score_one_width
-            + center_gap
-            + score_two_width
-            + name_score_gap
-            + team_two_width
-        )
-        if project.solo:
-            total_width = (
-                team_one_width + (name_score_gap if team_one_name else 0) + score_one_width
-            )
-        if total_width <= width * 9 // 10 or team_font_size <= 14:
-            break
-        team_font_size -= 2
-
+        + 2 * score_padding
+    )
     row_height = max(height // 8, team_font_size * 2)
     row_y = height * 2 // 5
-    x = (width - total_width) // 2
-    painter.setPen(QColor(style.text_color))
-    painter.setFont(team_font(team_one_name))
-    painter.drawText(
-        QRect(x, row_y, team_one_width, row_height),
-        Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
-        team_one_name,
-    )
-    x += team_one_width + (name_score_gap if team_one_name else 0)
+    score_left = (width - (box_width if project.solo else 2 * box_width + center_gap)) // 2
+    margin = width // 20
+    name_height = height * 2 // 5
+    name_top = row_y + (row_height - name_height) // 2
 
-    def draw_score(score: int, box_width: int, box_x: int) -> None:
+    def draw_name(name: str, area: QRect, alignment) -> None:
+        flags = (
+            alignment
+            | Qt.AlignmentFlag.AlignVCenter
+            | Qt.TextFlag.TextWordWrap
+            | Qt.TextFlag.TextWrapAnywhere
+        )
+        font = team_font(name)
+        painter.setFont(font)
+        while (
+            painter.fontMetrics().boundingRect(area, flags, name).height() > area.height()
+            and font.pointSize() > 8
+        ):
+            font.setPointSize(font.pointSize() - 1)
+            painter.setFont(font)
+        painter.setPen(QColor(style.text_color))
+        painter.drawText(area, flags, name)
+
+    draw_name(
+        team_one_name,
+        QRect(margin, name_top, max(1, score_left - name_score_gap - margin), name_height),
+        Qt.AlignmentFlag.AlignRight,
+    )
+
+    def draw_score(score: int, box_x: int) -> None:
         box = QRect(box_x, row_y, box_width, row_height)
         painter.setPen(QPen(QColor(style.text_color), max(1, height // 360)))
         painter.setBrush(QColor(0, 0, 0, 45))
@@ -328,17 +330,15 @@ def create_score_card(
         painter.setFont(score_font)
         painter.drawText(box, Qt.AlignmentFlag.AlignCenter, str(score))
 
-    draw_score(one_score, score_one_width, x)
+    draw_score(one_score, score_left)
     if not project.solo:
-        x += score_one_width + center_gap
-        draw_score(two_score, score_two_width, x)
-        x += score_two_width + name_score_gap
-        painter.setPen(QColor(style.text_color))
-        painter.setFont(team_font(team_two_name))
-        painter.drawText(
-            QRect(x, row_y, team_two_width, row_height),
-            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+        second_left = score_left + box_width + center_gap
+        draw_score(two_score, second_left)
+        name_left = second_left + box_width + name_score_gap
+        draw_name(
             team_two_name,
+            QRect(name_left, name_top, max(1, width - margin - name_left), name_height),
+            Qt.AlignmentFlag.AlignLeft,
         )
     if final:
         _draw_subtitle(painter, project.final_subtitle, style, size)
@@ -598,6 +598,38 @@ def _render_highlights(
     segment_durations: list[float] = []
 
     width, height = source_dimensions(project.video_path)
+
+    def card_video(
+        input_number: int,
+        style: CardStyle,
+        seconds: float,
+        anchor: float,
+        label: str,
+        limit: float | None = None,
+    ) -> None:
+        if style.background_mode in ("static", "color", "image"):
+            filters.append(
+                f"[{input_number}:v]scale={width}:{height},setsar=1,format=yuv420p,trim=duration={seconds:.3f},settb=AVTB,setpts=N/(({frame_rate_ffmpeg})*TB)[{label}]"
+            )
+            return
+        frame_seconds = float(1 / frame_rate)
+        anchor = max(0, min(anchor, duration_ms / 1000 - 2 * frame_seconds))
+        end = min(
+            duration_ms / 1000,
+            anchor + (2 * frame_seconds if style.background_mode == "freeze" else seconds),
+        )
+        if limit is not None:
+            end = min(end, max(anchor + 2 * frame_seconds, limit))
+        freeze = r",select=eq(n\,0)" if style.background_mode == "freeze" or limit == 0 else ""
+        blur = f",gblur=sigma={max(2, height / 90):.2f}" if style.background_mode == "video" else ""
+        filters.append(
+            f"[0:v]trim=start={anchor:.6f}:end={end:.6f}{freeze},setpts=PTS-STARTPTS,scale={width}:{height},setsar=1{blur},drawbox=color=black@0.55:t=fill,tpad=stop_mode=clone:stop_duration={seconds:.3f},fps={frame_rate_ffmpeg},trim=duration={seconds:.3f},settb=AVTB,setpts=N/(({frame_rate_ffmpeg})*TB)[{label}bg]"
+        )
+        filters.append(
+            f"[{input_number}:v]format=rgba,settb=AVTB,setpts=N/(({frame_rate_ffmpeg})*TB)[{label}text]"
+        )
+        filters.append(f"[{label}bg][{label}text]overlay=shortest=1,format=yuv420p[{label}]")
+
     input_index = 1
     if has_title_card(project):
         title_path = output_path.parent / f".kyykka-title-{uuid.uuid4().hex}.png"
@@ -615,10 +647,14 @@ def _render_highlights(
                 str(title_path),
             ]
         )
-        filters.append(
-            f"[1:v]scale={width}:{height},setsar=1,format=yuv420p,"
-            f"trim=duration={title_seconds:.3f},settb=AVTB,"
-            f"setpts=N/(({frame_rate_ffmpeg})*TB)[titlev]"
+        first_start, _ = _impact_bounds(project, included_impacts[0], included_impacts, duration_ms)
+        card_video(
+            1,
+            project.title_style,
+            title_seconds,
+            max(0, first_start - title_seconds),
+            "titlev",
+            first_start,
         )
         video_labels.append("[titlev]")
         segment_kinds.append("title")
@@ -662,10 +698,26 @@ def _render_highlights(
                 str(card_path),
             ]
         )
-        filters.append(
-            f"[{input_index}:v]scale={width}:{height},setsar=1,format=yuv420p,"
-            f"trim=duration={score_card_seconds:.3f},settb=AVTB,"
-            f"setpts=N/(({frame_rate_ffmpeg})*TB)[cardv{card_index}]"
+        preceding = (
+            included_impacts
+            if final
+            else [
+                impact
+                for impact in included_impacts
+                if impact.timestamp_ms <= project.round_one_end_ms
+            ]
+        )
+        anchor = (
+            _impact_bounds(project, preceding[-1], included_impacts, duration_ms)[1]
+            if preceding
+            else (project.round_one_end_ms or 0) / 1000
+        )
+        card_video(
+            input_index,
+            project.final_style if final else project.round_style,
+            score_card_seconds,
+            anchor,
+            f"cardv{card_index}",
         )
         video_labels.append(f"[cardv{card_index}]")
         segment_kinds.append("final" if final else "round")
@@ -725,7 +777,7 @@ def _render_highlights(
                 filters.append(
                     f"[0:a]atrim=start={start:.3f}:end={end:.3f},aresample=48000,"
                     "aformat=sample_rates=48000:channel_layouts=stereo,"
-                    f"asetpts=N/SR/TB[a{clip_index}]"
+                    f"asetpts=N/SR/TB,apad,atrim=duration={end - start:.3f}[a{clip_index}]"
                 )
                 audio_labels.append(f"[a{clip_index}]")
             clip_index += 1
@@ -765,7 +817,8 @@ def _render_highlights(
         segment_inputs = "".join(
             video + audio for video, audio in zip(video_labels, audio_labels, strict=True)
         )
-        filters.append(f"{segment_inputs}concat=n={len(video_labels)}:v=1:a=1[outv][outa]")
+        filters.append(f"{segment_inputs}concat=n={len(video_labels)}:v=1:a=1[outv][joined_audio]")
+        filters.append(f"[joined_audio]apad,atrim=duration={sum(segment_durations):.6f}[outa]")
     else:
         filters.append(f"{''.join(video_labels)}concat=n={len(video_labels)}:v=1:a=0[outv]")
     filters.append("[outv]scale=in_range=auto:out_range=tv,format=yuv420p[compatv]")

@@ -9,6 +9,22 @@ _language = "en"
 _qt_translator: QTranslator | None = None
 
 FINNISH = {
+    "Custom (unsaved)": "Mukautettu (tallentamaton)",
+    "Style preset": "Tyyliesiasetus",
+    "Load preset": "Lataa esiasetus",
+    "Save preset…": "Tallenna esiasetus…",
+    "Delete preset": "Poista esiasetus",
+    "Preset name": "Esiasetuksen nimi",
+    "Replace preset": "Korvaa esiasetus",
+    "Replace preset {name}?": "Korvataanko esiasetus {name}?",
+    "Presets include all three screens. Save this dialog to keep preset changes.": "Esiasetus sisältää kaikki kolme ruutua. Säilytä esiasetusmuutokset tallentamalla tämä ikkuna.",
+    "Color": "Väri",
+    "Image": "Kuva",
+    "Background": "Tausta",
+    "Color or image": "Väri tai kuva",
+    "Dimmed + blurred video": "Tummennettu ja sumennettu video",
+    "Dimmed freeze-frame": "Tummennettu pysäytyskuva",
+    "Video backgrounds appear during export. This preview shows text on a dim background.": "Videotaustat näkyvät viennissä. Tämä esikatselu näyttää tekstin tummalla taustalla.",
     "Overlapping highlights": "Päällekkäiset heittoklipit",
     "{first} / {second}: {seconds} s overlap": "{first} / {second}: {seconds} s päällekkäisyyttä",
     "…and {count} more overlapping pairs": "…ja {count} muuta päällekkäistä paria",

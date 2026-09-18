@@ -49,6 +49,56 @@ def test_styles_saved_and_old_projects_keep_original_style(tmp_path):
     assert all(getattr(restored, key) == CardStyle() for key in STYLE_KEYS)
 
 
+def test_background_controls_follow_selected_mode(qapp, monkeypatch):
+    monkeypatch.setattr(
+        "kyykka_editor.card_settings.load_card_defaults",
+        lambda: {key: CardStyle() for key in STYLE_KEYS},
+    )
+    dialog = CardSettingsDialog(EditorProject())
+    for key in STYLE_KEYS:
+        mode = dialog.background_modes[key]
+        _, color, image = dialog.background_fields[key]
+        for value in ("color", "image", "video", "freeze"):
+            mode.setCurrentIndex(mode.findData(value))
+            assert color.isHidden() == (value != "color")
+            assert image.isHidden() == (value != "image")
+            assert dialog.styles[key].background_mode == value
+    dialog.reject()
+
+
+def test_named_presets_persist_load_and_cancel_deletion(qapp, tmp_path, monkeypatch):
+    from PySide6.QtCore import QSettings
+    from PySide6.QtWidgets import QInputDialog
+
+    settings = QSettings(str(tmp_path / "presets.ini"), QSettings.Format.IniFormat)
+    monkeypatch.setattr("kyykka_editor.card_settings.QSettings", lambda *args: settings)
+    monkeypatch.setattr(QInputDialog, "getText", lambda *args: ("Tournament", True))
+    dialog = CardSettingsDialog(EditorProject())
+    dialog.styles["title_style"].background_color = "#123456"
+    dialog.background_modes["round_style"].setCurrentIndex(
+        dialog.background_modes["round_style"].findData("freeze")
+    )
+    dialog._save_preset()
+    dialog.styles["title_style"].background_color = "#654321"
+    dialog._load_preset()
+    assert dialog.styles["title_style"].background_color == "#123456"
+    assert dialog.background_fields["title_style"][1].text() == "#123456"
+    assert dialog.styles["round_style"].background_mode == "freeze"
+    dialog.accept()
+    reopened = CardSettingsDialog(EditorProject())
+    assert "Tournament" in reopened.presets
+    reopened._delete_preset()
+    assert not reopened.presets
+    reopened.reject()
+    restored = CardSettingsDialog(EditorProject())
+    assert "Tournament" in restored.presets
+    restored._delete_preset()
+    restored.accept()
+    final = CardSettingsDialog(EditorProject())
+    assert not final.presets
+    final.reject()
+
+
 def test_settings_cancel_keeps_project_unchanged(qapp, monkeypatch):
     monkeypatch.setattr(
         "kyykka_editor.card_settings.load_card_defaults",

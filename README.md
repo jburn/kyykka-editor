@@ -148,6 +148,21 @@ Open **Help → Hotkeys** to see all editor shortcuts.
 
 Primary actions are available through visible controls; shortcuts are supporting controls.
 
+**Screen settings → Save preset…** stores a named configuration for all three
+screens. Select a preset and choose **Load preset** to edit or reuse it, or
+**Delete preset** to remove it. Save the dialog to keep preset changes; Cancel
+discards them. Loading does not change existing projects unless **Also apply to
+the current project** is checked when saving. Presets reference background image
+files, so keep those images available.
+
+In **Settings → Screen settings**, each screen can use **Color or image**,
+**Dimmed + blurred video**, or **Dimmed freeze-frame**. Title backgrounds use
+footage before the first highlight; result backgrounds use footage after the
+preceding highlight. Short backgrounds hold the last available frame. These
+backgrounds are silent and keep the existing card fades. Settings previews show
+text styling on a dark background; video backgrounds are composed during export.
+Enable **Also apply to the current project** to use changed defaults immediately.
+
 Round-end cards crossfade from the preceding highlight and into the next round's
 first highlight. Fades last up to one second, shortened for brief clips, and
 include audio. A fade is only added where an adjacent highlight exists.
