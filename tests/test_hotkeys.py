@@ -11,6 +11,7 @@ from kyykka_editor.hotkeys import HotkeysDialog, conflicting_bindings, load_bind
 
 def test_conflicts_and_empty_bindings():
     assert conflicting_bindings({"a": "Ctrl+S", "b": "Ctrl+S"})
+    assert conflicting_bindings({"a": "Ctrl+S", "b": "Ctrl+S, Ctrl+T"})
     assert not conflicting_bindings({"a": "", "b": ""})
     assert not conflicting_bindings({"a": "M", "b": "Ctrl+M"})
 
@@ -22,7 +23,12 @@ def test_configure_restore_and_persist(qapp, tmp_path, monkeypatch):
     dialog = HotkeysDialog(window.configurable_actions)
     dialog.editors["M"].setKeySequence(QKeySequence("E"))
     assert not dialog.buttons.button(QDialogButtonBox.StandardButton.Save).isEnabled()
+    assert dialog.action_names["E"] in dialog.conflict_labels["M"].text()
+    assert dialog.action_names["M"] in dialog.conflict_labels["E"].text()
+    assert not dialog.conflict_labels["M"].isHidden()
     dialog.editors["M"].setKeySequence(QKeySequence("F6"))
+    assert dialog.conflict_labels["M"].isHidden()
+    assert dialog.conflict_labels["E"].isHidden()
     dialog.editors[","].setKeySequence(QKeySequence("F7"))
     assert dialog.buttons.button(QDialogButtonBox.StandardButton.Save).isEnabled()
     dialog.accept()
@@ -32,11 +38,14 @@ def test_configure_restore_and_persist(qapp, tmp_path, monkeypatch):
     window._apply_hotkeys(loaded)
     assert window.shortcut_actions["M"].shortcut().toString() == "F6"
     assert "F7" in window.thrower_shortcut_hint.text()
+    persisted = settings.value("hotkeys")
     dialog._reset()
     assert dialog.bindings() == {
         key: QKeySequence(value).toString(QKeySequence.SequenceFormat.PortableText)
         for key, value in defaults.items()
     }
+    dialog.reject()
+    assert settings.value("hotkeys") == persisted
     settings.setValue("hotkeys", json.dumps({"M": "E"}))
     assert load_bindings(defaults) == defaults
     window.close()

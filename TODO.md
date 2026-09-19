@@ -1,1 +1,0 @@
-- Complete UI cleanup and polish

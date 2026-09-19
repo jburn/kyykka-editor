@@ -18,8 +18,10 @@ from PySide6.QtWidgets import (
 )
 
 from .combine import can_stream_copy, combine_videos, inspect_videos
+from .dialog_style import dialog_layout, heading
 from .i18n import tr
 from .render import RenderCancelled, RenderError
+from .toast import Toast
 
 
 class CombineWorker(QThread):
@@ -49,17 +51,34 @@ class CombineVideosDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle(tr("Combine videos…"))
-        self.resize(620, 400)
+        self.resize(660, 460)
         self.worker = None
         self.progress_dialog = None
-        layout = QVBoxLayout(self)
+        layout = dialog_layout(self)
+        layout.addWidget(heading("Game order"))
         hint = QLabel(tr("Add exported match videos and arrange them in game order."))
         hint.setWordWrap(True)
+        hint.setStyleSheet("color: palette(placeholder-text);")
         layout.addWidget(hint)
         self.videos = QListWidget()
         self.videos.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
-        layout.addWidget(self.videos)
+        self.videos.setStyleSheet(
+            "QListWidget { border: 1px solid palette(mid); }"
+            "QListWidget::item { padding: 8px 10px; }"
+        )
+        self.empty_label = QLabel(
+            tr("No videos added yet.\nUse Add videos… to choose the matches to combine."),
+            self.videos.viewport(),
+        )
+        self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_label.setWordWrap(True)
+        self.empty_label.setStyleSheet("color: palette(placeholder-text);")
+        self.empty_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        empty_layout = QVBoxLayout(self.videos.viewport())
+        empty_layout.addWidget(self.empty_label)
+        layout.addWidget(self.videos, 1)
         row = QHBoxLayout()
+        row.setSpacing(8)
         self.add_button = QPushButton(tr("Add videos…"))
         self.remove_button = QPushButton(tr("Remove"))
         self.up_button = QPushButton(tr("Move up"))
@@ -78,11 +97,14 @@ class CombineVideosDialog(QDialog):
             )
         )
         note.setWordWrap(True)
+        note.setStyleSheet("color: palette(placeholder-text);")
         layout.addWidget(note)
+        self.toast = Toast(self)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         self.combine_button = buttons.addButton(
-            tr("Combine…"), QDialogButtonBox.ButtonRole.ActionRole
+            tr("Combine and save…"), QDialogButtonBox.ButtonRole.ActionRole
         )
+        self.combine_button.setProperty("primary", True)
         self.combine_button.clicked.connect(self._inspect)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -124,6 +146,10 @@ class CombineVideosDialog(QDialog):
         self._update_buttons()
 
     def _update_buttons(self):
+        for index in range(self.videos.count()):
+            item = self.videos.item(index)
+            item.setText(f"{index + 1}.  {Path(item.data(Qt.ItemDataRole.UserRole)).name}")
+        self.empty_label.setVisible(self.videos.count() == 0)
         idle = self.worker is None
         row = self.videos.currentRow()
         self.add_button.setEnabled(idle)
@@ -136,6 +162,7 @@ class CombineVideosDialog(QDialog):
     def _start(self, job, activity, finished):
         from .app import RenderDialog
 
+        self.toast.hide()
         self.worker = CombineWorker(job, self)
         self.progress_dialog = RenderDialog(self, title="Combine videos…", activity=activity)
         self.progress_dialog.status.setText(tr(activity))
@@ -156,6 +183,8 @@ class CombineVideosDialog(QDialog):
         worker.deleteLater()
         if worker.error:
             QMessageBox.critical(self, tr("Combine videos…"), worker.error)
+        elif worker.cancelled:
+            self.toast.notify(tr("Combining cancelled. No output file was replaced."))
         elif not worker.cancelled:
             finished(worker.result)
 
@@ -203,9 +232,7 @@ class CombineVideosDialog(QDialog):
         self._start(job, "Combining videos…", self._saved)
 
     def _saved(self, filename):
-        QMessageBox.information(
-            self, tr("Videos combined"), tr("Saved combined video to:\n{path}", path=filename)
-        )
+        self.toast.notify(tr("Saved combined video to:\n{path}", path=filename), 6000)
 
     def reject(self):
         if self.worker is not None:

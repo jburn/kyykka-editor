@@ -8,6 +8,7 @@ import sys
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import replace
+from itertools import pairwise
 from pathlib import Path
 from threading import Event
 
@@ -17,13 +18,14 @@ os.environ.setdefault("QT_FFMPEG_DEBUG", "0")
 os.environ.setdefault("QT_LOGGING_RULES", "qt.multimedia.ffmpeg.*=false")
 
 from PySide6.QtCore import (
+    QByteArray,
     QElapsedTimer,
     QEvent,
     QMimeData,
     QPoint,
-    QPropertyAnimation,
     QRectF,
     QSettings,
+    QSize,
     QSizeF,
     QStandardPaths,
     Qt,
@@ -49,6 +51,7 @@ from PySide6.QtGui import (
     QMouseEvent,
     QPainter,
     QPaintEvent,
+    QPalette,
     QPen,
     QResizeEvent,
 )
@@ -56,13 +59,14 @@ from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
 from PySide6.QtWidgets import (
     QApplication,
+    QBoxLayout,
     QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
-    QGraphicsOpacityEffect,
+    QFrame,
     QGraphicsRectItem,
     QGraphicsScene,
     QGraphicsSimpleTextItem,
@@ -78,8 +82,10 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QSizePolicy,
     QSlider,
     QSpinBox,
+    QSplitter,
     QStyle,
     QStyleOptionSlider,
     QTableWidget,
@@ -91,6 +97,7 @@ from PySide6.QtWidgets import (
 
 from . import __version__
 from .card_settings import CardSettingsDialog, load_card_defaults
+from .dialog_style import dialog_layout, form_layout, heading
 from .history import TimelineSnapshot
 from .hotkeys import HotkeysDialog, load_bindings
 from .i18n import LANGUAGES, language, saved_language, set_language, tr
@@ -104,6 +111,7 @@ from .render import (
     render_highlights,
 )
 from .storage import project_data, read_project, write_project
+from .toast import Toast
 
 ICON_PATH = Path(__file__).with_name("assets") / "kyykka-editor.png"
 PROJECT_URL = "https://github.com/jburn/kyykka-editor"
@@ -173,8 +181,11 @@ class ProjectDialog(QDialog):
     def __init__(self, project: EditorProject, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("Match details"))
-        self.setMinimumWidth(560)
-        form = QFormLayout(self)
+        self.setMinimumWidth(660)
+        layout = dialog_layout(self)
+        layout.addWidget(heading("Recording"))
+        form = form_layout()
+        layout.addLayout(form)
         self.title_edit = QLineEdit(project.title)
         self.title_subtitle_edit = QLineEdit(project.title_subtitle)
         self.final_subtitle_edit = QLineEdit(project.final_subtitle)
@@ -187,8 +198,7 @@ class ProjectDialog(QDialog):
         self.team_one_edit = QLineEdit(project.team_one)
         self.team_two_edit = QLineEdit(project.team_two)
         self.video_path = project.video_path
-        self.video_label = QLabel()
-        self.video_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.video_label = ElidedLabel()
         self._refresh_video_label()
         browse = QPushButton(tr("Browse…"))
         browse.clicked.connect(self._browse_video)
@@ -217,15 +227,31 @@ class ProjectDialog(QDialog):
         form.addRow(tr("Match title"), self.title_edit)
         form.addRow(tr("Title-screen subtitle"), self.title_subtitle_edit)
         form.addRow(tr("Video"), video_row)
-        form.addRow(tr("Team 1"), self.team_one_edit)
-        form.addRow(tr("Team 1 players"), self.players_one)
-        form.addRow(tr("Team 2"), self.team_two_edit)
-        form.addRow(tr("Team 2 players"), self.players_two)
+        layout.addSpacing(4)
+        layout.addWidget(heading("Participants"))
+        participants = QHBoxLayout()
+        participants.setSpacing(20)
+        first_team, second_team = QWidget(), QWidget()
+        first_form, second_form = form_layout(first_team), form_layout(second_team)
+        for team_form in (first_form, second_form):
+            team_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
+        first_form.addRow(tr("Team 1"), self.team_one_edit)
+        first_form.addRow(tr("Team 1 players"), self.players_one)
+        second_form.addRow(tr("Team 2"), self.team_two_edit)
+        second_form.addRow(tr("Team 2 players"), self.players_two)
+        participants.addWidget(first_team, 1)
+        participants.addWidget(second_team, 1)
+        layout.addLayout(participants)
+        layout.addSpacing(4)
+        layout.addWidget(heading("Scores"))
         score_grid = QGridLayout()
+        score_grid.setHorizontalSpacing(16)
+        score_grid.setVerticalSpacing(8)
         score_grid.addWidget(QLabel(tr("Round 1")), 0, 1)
         score_grid.addWidget(QLabel(tr("Round 2")), 0, 2)
-        self.score_team_one = QLabel(project.team_one or tr("Team 1"))
-        self.score_team_two = QLabel(project.team_two or tr("Team 2"))
+        self.score_team_one = ElidedLabel(project.team_one or tr("Team 1"))
+        self.score_team_two = ElidedLabel(project.team_two or tr("Team 2"))
+        score_grid.setColumnStretch(0, 1)
         self.team_one_edit.textChanged.connect(
             lambda name: self.score_team_one.setText(
                 name.strip() or tr("Player" if self.recording_type.currentIndex() else "Team 1")
@@ -240,27 +266,61 @@ class ProjectDialog(QDialog):
         score_grid.addWidget(self.score_team_two, 2, 0)
         score_grid.addWidget(self.scores[1], 2, 1)
         score_grid.addWidget(self.scores[3], 2, 2)
-        form.addRow(tr("Scores"), score_grid)
-        form.addRow(tr("Final-result subtitle"), self.final_subtitle_edit)
+        layout.addLayout(score_grid)
+        result_form = form_layout()
+        result_form.addRow(tr("Final-result subtitle"), self.final_subtitle_edit)
+        layout.addLayout(result_form)
+        field_labels = [
+            current.itemAt(row, QFormLayout.ItemRole.LabelRole).widget()
+            for current in (form, result_form)
+            for row in range(current.rowCount())
+        ]
+        label_width = max(label.sizeHint().width() for label in field_labels)
+        for label in field_labels:
+            label.setMinimumWidth(label_width)
+        layout.addSpacing(4)
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
+        buttons.button(QDialogButtonBox.StandardButton.Save).setProperty("primary", True)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
-        form.addRow(buttons)
+        layout.addWidget(buttons)
+
+        tab_order = (
+            self.recording_type,
+            self.title_edit,
+            self.title_subtitle_edit,
+            browse,
+            self.team_one_edit,
+            self.players_one,
+            self.team_two_edit,
+            self.players_two,
+            self.scores[0],
+            self.scores[2],
+            self.scores[1],
+            self.scores[3],
+            self.final_subtitle_edit,
+            buttons.button(QDialogButtonBox.StandardButton.Save),
+            buttons.button(QDialogButtonBox.StandardButton.Cancel),
+        )
+        for first, second in pairwise(tab_order):
+            QWidget.setTabOrder(first, second)
 
         def update_mode() -> None:
             solo = self.recording_type.currentIndex() == 1
-            form.labelForField(self.team_one_edit).setText(tr("Player" if solo else "Team 1"))
-            for widget in (self.players_one, self.team_two_edit, self.players_two):
-                form.setRowVisible(widget, not solo)
+            first_form.labelForField(self.team_one_edit).setText(tr("Player" if solo else "Team 1"))
+            first_form.setRowVisible(self.players_one, not solo)
+            for widget in (self.team_two_edit, self.players_two):
+                second_form.setRowVisible(widget, not solo)
+            second_team.setVisible(not solo)
             for widget in (self.score_team_two, self.scores[1], self.scores[3]):
                 widget.setVisible(not solo)
             self.score_team_one.setText(
                 self.team_one_edit.text().strip() or tr("Player" if solo else "Team 1")
             )
-            form.invalidate()
-            form.activate()
+            layout.invalidate()
+            layout.activate()
             self.resize(self.width(), self.sizeHint().height())
 
         self.recording_type.currentIndexChanged.connect(update_mode)
@@ -434,7 +494,14 @@ class SeekSlider(QSlider):
         self.markers: tuple[int, ...] = ()
         self.round_end: int | None = None
         self.game_end: int | None = None
+        self.selected_markers: set[tuple[str, int]] = set()
+        self.setAccessibleName(tr("Video timeline"))
         self.setMinimumHeight(28)
+
+    def set_selected_markers(self, markers: set[tuple[str, int]]) -> None:
+        if markers != self.selected_markers:
+            self.selected_markers = markers
+            self.update()
 
     def set_markers(
         self, timestamps: list[int], round_end: int | None = None, game_end: int | None = None
@@ -505,12 +572,16 @@ class SeekSlider(QSlider):
             "Round 1 end": (QColor("#4488cc"), 11),
             "Game end": (QColor("#35a575"), 16),
         }
-        for x, kind, _timestamp in self._marker_details():
+        for x, kind, timestamp in self._marker_details():
             marker_color, height = styles[kind]
             if not self.isEnabled():
                 marker_color.setAlpha(110)
             painter.setPen(QPen(marker_color, 2))
             painter.drawLine(x, self.height() - height, x, self.height() - 2)
+            if (kind, timestamp) in self.selected_markers:
+                painter.setPen(QPen(self.palette().text().color(), 2))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawRect(x - 4, self.height() - 20, 8, 18)
         painter.end()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
@@ -739,6 +810,78 @@ class VideoPreview(QGraphicsView):
         self.overlay.setVisible(bool(self.thrower))
 
 
+class ElidedLabel(QLabel):
+    """Keep full text accessible while fitting the visible label to available space."""
+
+    def __init__(self, text: str = "") -> None:
+        super().__init__(text)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.setMinimumWidth(0)
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        painter = QPainter(self)
+        text = self.fontMetrics().elidedText(
+            self.text(), Qt.TextElideMode.ElideMiddle, self.contentsRect().width()
+        )
+        self.style().drawItemText(
+            painter,
+            self.contentsRect(),
+            self.alignment(),
+            self.palette(),
+            self.isEnabled(),
+            text,
+            self.foregroundRole(),
+        )
+
+    def event(self, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.ToolTip and isinstance(event, QHelpEvent):
+            QToolTip.showText(event.globalPos(), self.toolTip() or self.text(), self)
+            return True
+        return super().event(event)
+
+
+class WrappingControls(QWidget):
+    """Keep control groups together, stacking them when the panel becomes narrow."""
+
+    def __init__(self, *groups: QWidget) -> None:
+        super().__init__()
+        self.groups = groups
+        self.row = QBoxLayout(QBoxLayout.Direction.LeftToRight, self)
+        self.row.setContentsMargins(0, 0, 0, 0)
+        self.row.setSpacing(12)
+        self.row.setSizeConstraint(QBoxLayout.SizeConstraint.SetNoConstraint)
+        for group in groups:
+            self.row.addWidget(group)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(
+            max(group.minimumSizeHint().width() for group in self.groups),
+            self.row.minimumSize().height(),
+        )
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._arrange()
+
+    def event(self, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.LayoutRequest and hasattr(self, "row"):
+            self._arrange()
+        return super().event(event)
+
+    def _arrange(self) -> None:
+        needed = sum(group.sizeHint().width() for group in self.groups)
+        needed += self.row.spacing() * (len(self.groups) - 1)
+        direction = (
+            QBoxLayout.Direction.TopToBottom
+            if self.width() < needed
+            else QBoxLayout.Direction.LeftToRight
+        )
+        if direction != self.row.direction():
+            self.row.setDirection(direction)
+            self.updateGeometry()
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -798,60 +941,81 @@ class MainWindow(QMainWindow):
         self._connect_player()
         self._refresh_impacts()
 
-        self.undo_toast = QLabel(self)
-        toast_font = self.undo_toast.font()
-        toast_font.setPointSizeF(toast_font.pointSizeF() + 2)
-        self.undo_toast.setFont(toast_font)
-        self.undo_toast.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.undo_toast.setStyleSheet(
-            "background: #30343b; color: #f5f5f5; border-radius: 10px; padding: 14px 22px;"
-        )
-        self.undo_toast.hide()
-        self.toast_opacity = QGraphicsOpacityEffect(self.undo_toast)
-        self.undo_toast.setGraphicsEffect(self.toast_opacity)
-        self.toast_fade = QPropertyAnimation(self.toast_opacity, b"opacity", self)
-        self.toast_fade.setDuration(300)
-        self.toast_fade.setStartValue(1.0)
-        self.toast_fade.setEndValue(0.0)
-        self.toast_fade.finished.connect(self.undo_toast.hide)
-        self.toast_timer = QTimer(self)
-        self.toast_timer.setSingleShot(True)
-        self.toast_timer.setInterval(1700)
-        self.toast_timer.timeout.connect(self.toast_fade.start)
+        self.toast = Toast(self)
+        self._restore_workspace(settings)
 
-    def _position_undo_toast(self) -> None:
-        self.undo_toast.move(
-            max(0, (self.width() - self.undo_toast.width()) // 2),
-            max(0, (self.height() - self.undo_toast.height()) // 2),
-        )
+    def _restore_workspace(self, settings: QSettings) -> None:
+        geometry = settings.value("workspace/geometry")
+        splitter = settings.value("workspace/splitter")
+        if isinstance(geometry, QByteArray):
+            self.restoreGeometry(geometry)
+        if isinstance(splitter, QByteArray):
+            self.workspace_splitter.restoreState(splitter)
 
-    def resizeEvent(self, event: QResizeEvent) -> None:
-        super().resizeEvent(event)
-        if hasattr(self, "undo_toast"):
-            self._position_undo_toast()
-
-    def _show_undo_toast(self, message: str) -> None:
-        self.toast_fade.stop()
-        self.toast_opacity.setOpacity(1.0)
-        self.undo_toast.setText(message)
-        self.undo_toast.adjustSize()
-        self._position_undo_toast()
-        self.undo_toast.show()
-        self.undo_toast.raise_()
-        self.toast_timer.start()
+    def changeEvent(self, event: QEvent) -> None:
+        super().changeEvent(event)
+        if (
+            event.type() in (QEvent.Type.PaletteChange, QEvent.Type.StyleChange)
+            and hasattr(self, "shortcut_actions")
+            and "Space" in self.shortcut_actions
+        ):
+            self._refresh_transport_controls()
 
     def _build_ui(self) -> None:
         root = QWidget()
+        root.setObjectName("editorRoot")
+        root.setStyleSheet(
+            "QWidget#editorRoot QPushButton { min-height: 24px; padding: 4px 10px; }"
+            "QWidget#editorRoot QComboBox { min-height: 24px; padding: 4px 6px; }"
+            "QWidget#editorRoot QPushButton:focus, QWidget#editorRoot QComboBox:focus { "
+            "border: 1px solid palette(highlight); border-radius: 4px; }"
+            'QPushButton[primary="true"] { background: palette(highlight); '
+            "color: palette(highlighted-text); border: 1px solid palette(highlight); "
+            "border-radius: 4px; font-weight: 600; }"
+            'QPushButton[primary="true"]:hover, QPushButton[primary="true"]:focus { '
+            "border-color: palette(highlighted-text); }"
+            'QPushButton[primary="true"]:pressed { background: palette(dark); }'
+            'QPushButton[primary="true"]:disabled { background: palette(button); '
+            "color: palette(placeholder-text); border-color: palette(mid); }"
+        )
         outer = QHBoxLayout(root)
-        left, right = QVBoxLayout(), QVBoxLayout()
+        outer.setContentsMargins(16, 16, 16, 16)
+        self.workspace_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.workspace_splitter.setChildrenCollapsible(False)
+        self.workspace_splitter.setHandleWidth(12)
+        self.workspace_splitter.setStyleSheet(
+            "QSplitter::handle:horizontal { background: palette(mid); margin: 12px 5px; }"
+            "QSplitter::handle:horizontal:hover { background: palette(highlight); }"
+        )
+        self.video_panel, self.sidebar = QWidget(), QWidget()
+        left, right = QVBoxLayout(self.video_panel), QVBoxLayout(self.sidebar)
+        left.setContentsMargins(0, 0, 6, 0)
+        right.setContentsMargins(6, 0, 0, 0)
+        left.setSpacing(8)
+        right.setSpacing(8)
+
+        def section_heading(text: str) -> QLabel:
+            label = QLabel(tr(text))
+            font = label.font()
+            font.setWeight(QFont.Weight.DemiBold)
+            font.setPointSizeF(font.pointSizeF() + 1)
+            label.setFont(font)
+            return label
+
+        def section_break() -> None:
+            right.addSpacing(8)
+            line = QFrame()
+            line.setFixedHeight(1)
+            line.setStyleSheet("background: palette(mid);")
+            right.addWidget(line)
+            right.addSpacing(8)
 
         source_row = QHBoxLayout()
-        self.video_status = QLabel(tr("No video selected"))
+        self.video_status = ElidedLabel(tr("No video selected"))
         status_font = self.video_status.font()
         status_font.setPointSizeF(max(8.0, status_font.pointSizeF() - 1.0))
         self.video_status.setFont(status_font)
         self.video_status.setStyleSheet("color: palette(placeholder-text);")
-        self.video_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         source_row.addWidget(self.video_status, 1)
         self.preview_indicator = QLabel(tr("Previewing highlight"))
         self.preview_indicator.setStyleSheet("color: palette(placeholder-text);")
@@ -882,20 +1046,32 @@ class MainWindow(QMainWindow):
         timeline.addWidget(self.duration_label)
         left.addLayout(timeline)
 
-        controls = QHBoxLayout()
+        transport = QWidget()
+        controls = QHBoxLayout(transport)
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setSpacing(8)
         self.back_button = QPushButton("−3 s")
-        self.play_button = QPushButton(tr("Play"))
+        self.play_button = QPushButton()
+        self.play_button.setFixedWidth(44)
+        self.back_button.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_MediaSeekBackward)
+        )
         self.forward_button = QPushButton("+5 s")
+        self.forward_button.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_MediaSeekForward)
+        )
         self.playback_speed = QComboBox()
         for rate in (0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0):
             self.playback_speed.addItem(f"{rate:g}×", rate)
         self.playback_speed.setCurrentIndex(3)
+        self.playback_speed.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.playback_speed.setToolTip(tr("Playback speed (export speed is unchanged)"))
         self.playback_speed.setAccessibleName(tr("Playback speed"))
         self.playback_speed.currentIndexChanged.connect(
             lambda: self.player.setPlaybackRate(self.playback_speed.currentData())
         )
         self.mark_button = QPushButton(tr("Mark impact"))
+        self.mark_button.setProperty("primary", True)
         self.undo_button = QPushButton(tr("Undo"))
         self.mark_button.setDefault(True)
         for button in (
@@ -903,18 +1079,45 @@ class MainWindow(QMainWindow):
             self.play_button,
             self.forward_button,
             self.playback_speed,
-            self.mark_button,
-            self.undo_button,
         ):
             controls.addWidget(button)
-        left.addLayout(controls)
+        controls.addStretch()
+        marking = QWidget()
+        marking_row = QHBoxLayout(marking)
+        marking_row.setContentsMargins(0, 0, 0, 0)
+        marking_row.setSpacing(8)
+        marking_row.addWidget(self.mark_button)
+        marking_row.addWidget(self.undo_button)
+        self.playback_controls = WrappingControls(transport, marking)
+        left.addWidget(self.playback_controls)
 
         self.details_button = QPushButton(tr("Match details…"))
         self.details_button.clicked.connect(self.edit_project_details)
-        right.addWidget(self.details_button)
+        match_row = QHBoxLayout()
+        self.match_heading = section_heading("Match")
+        match_row.addWidget(self.match_heading, 1)
+        match_row.addWidget(self.details_button)
+        right.addLayout(match_row)
+        self.match_summary = QLabel()
+        self.match_summary.setTextFormat(Qt.TextFormat.PlainText)
+        self.match_summary.setWordWrap(True)
+        self.match_summary.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.match_summary.setMaximumHeight(self.match_summary.fontMetrics().lineSpacing() * 3)
+        self.match_summary.setStyleSheet("color: palette(placeholder-text);")
+        right.addWidget(self.match_summary)
+        section_break()
+        self.marking_heading = section_heading("Marking")
+        right.addWidget(self.marking_heading)
 
         thrower_form = QFormLayout()
+        thrower_form.setVerticalSpacing(8)
+        thrower_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
         self.thrower_combo = QComboBox()
+        self.thrower_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.thrower_combo.setMinimumContentsLength(10)
+        self.thrower_combo.currentTextChanged.connect(self.thrower_combo.setToolTip)
         self.thrower_combo.currentTextChanged.connect(self.video.set_thrower)
         thrower_field = QVBoxLayout()
         thrower_field.setSpacing(2)
@@ -924,34 +1127,70 @@ class MainWindow(QMainWindow):
         hint_font.setPointSizeF(max(8.0, hint_font.pointSizeF() - 1.0))
         self.thrower_shortcut_hint.setFont(hint_font)
         self.thrower_shortcut_hint.setStyleSheet("color: palette(placeholder-text);")
+        self.thrower_shortcut_hint.setWordWrap(True)
         thrower_field.addWidget(self.thrower_shortcut_hint)
         self.thrower_label = QLabel(tr("Current thrower"))
         thrower_form.addRow(self.thrower_label, thrower_field)
         right.addLayout(thrower_form)
 
         event_row = QHBoxLayout()
+        event_row.setSpacing(8)
         self.round_end_button = QPushButton(tr("Mark round 1 end"))
         self.game_end_button = QPushButton(tr("Mark game end"))
         event_row.addWidget(self.round_end_button)
         event_row.addWidget(self.game_end_button)
         right.addLayout(event_row)
-        self.timeline_label = QLabel(tr("Timeline events"))
+        section_break()
+        self.timeline_label = section_heading("Highlights")
         right.addWidget(self.timeline_label)
         self.impact_table = QTableWidget(0, 2)
-        self.impact_table.setAlternatingRowColors(True)
+        self.impact_table.setAlternatingRowColors(False)
         self.impact_table.setShowGrid(False)
+        self.impact_table.verticalHeader().hide()
+        self.impact_table.verticalHeader().setDefaultSectionSize(
+            max(34, self.impact_table.fontMetrics().height() + 16)
+        )
+        self.impact_table.setStyleSheet(
+            "QTableWidget { border: 1px solid palette(mid); }"
+            "QTableWidget::item { padding: 4px 8px; }"
+            "QTableWidget::item:selected { background: palette(highlight); color: palette(highlighted-text); }"
+            "QHeaderView::section { padding: 6px 8px; border: none; "
+            "border-bottom: 1px solid palette(mid); background: palette(window); }"
+        )
         self.impact_table.setHorizontalHeaderLabels([tr("Event"), tr("Timestamp")])
         self.impact_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.impact_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.ResizeToContents
+        )
         self.impact_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.impact_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.impact_table.setAccessibleName(tr("Highlights"))
+        self.impact_table.setTabKeyNavigation(False)
+        self.empty_highlights = QLabel(self.impact_table.viewport())
+        self.empty_highlights.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_highlights.setWordWrap(True)
+        self.empty_highlights.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.empty_highlights.setStyleSheet("color: palette(text); padding: 12px;")
+        empty_layout = QVBoxLayout(self.impact_table.viewport())
+        empty_layout.addWidget(self.empty_highlights)
         right.addWidget(self.impact_table, 1)
+        self.preview_button = QPushButton(tr("Preview selected"))
+        self.preview_button.clicked.connect(self.preview_highlight)
+        right.addWidget(self.preview_button)
         self.remove_button = QPushButton(tr("Remove selected"))
         self.edit_button = QPushButton(tr("Edit selected…"))
         self.export_button = QPushButton(tr("Export highlights…"))
+        self.export_button.setProperty("primary", True)
         edit_row = QHBoxLayout()
+        edit_row.setSpacing(8)
         edit_row.addWidget(self.edit_button)
         edit_row.addWidget(self.remove_button)
         right.addLayout(edit_row)
+        self.action_guidance = QLabel()
+        self.action_guidance.setWordWrap(True)
+        self.action_guidance.setStyleSheet("color: palette(text);")
+        right.addWidget(self.action_guidance)
+        right.addSpacing(8)
         self.export_summary = QLabel()
         self.export_summary.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.export_summary.setWordWrap(True)
@@ -959,9 +1198,34 @@ class MainWindow(QMainWindow):
         right.addWidget(self.export_summary)
         right.addWidget(self.export_button)
 
-        outer.addLayout(left, 3)
-        outer.addLayout(right, 1)
+        self.workspace_splitter.addWidget(self.video_panel)
+        self.workspace_splitter.addWidget(self.sidebar)
+        self.workspace_splitter.setStretchFactor(0, 3)
+        self.workspace_splitter.setStretchFactor(1, 1)
+        self.workspace_splitter.setSizes([840, 300])
+        outer.addWidget(self.workspace_splitter)
         self.setCentralWidget(root)
+        tab_order = (
+            self.video.details_button,
+            self.slider,
+            self.back_button,
+            self.play_button,
+            self.forward_button,
+            self.playback_speed,
+            self.mark_button,
+            self.undo_button,
+            self.details_button,
+            self.thrower_combo,
+            self.round_end_button,
+            self.game_end_button,
+            self.impact_table,
+            self.preview_button,
+            self.edit_button,
+            self.remove_button,
+            self.export_button,
+        )
+        for first, second in pairwise(tab_order):
+            QWidget.setTabOrder(first, second)
 
         self.play_button.clicked.connect(self.toggle_playback)
         self.back_button.clicked.connect(lambda: self.seek_relative(-self.skip_backward * 1000))
@@ -1033,7 +1297,9 @@ class MainWindow(QMainWindow):
         self.hotkeys_menu = hotkeys_menu = help_menu.addMenu(tr("&Hotkeys"))
         hotkeys_menu.addActions(self.actions())
         hotkeys_menu.addSeparator()
-        hotkeys_menu.addActions(menu.actions())
+        hotkeys_menu.addActions(
+            [action for action in menu.actions() if action in self.configurable_actions.values()]
+        )
         self.language_menu = self.settings_menu.addMenu(tr("&Language"))
         self.language_group = QActionGroup(self)
         for code, name in LANGUAGES.items():
@@ -1063,16 +1329,15 @@ class MainWindow(QMainWindow):
             return
         dialog = QDialog(self)
         dialog.setWindowTitle(tr("Preferences"))
-        layout = QFormLayout(dialog)
-        layout.setHorizontalSpacing(18)
-        layout.setVerticalSpacing(12)
+        dialog.setMinimumWidth(480)
+        layout = dialog_layout(dialog)
+        layout.addWidget(heading("Playback"))
+        playback_hint = QLabel(tr("Application settings. Skip amounts are used in every project."))
+        playback_hint.setWordWrap(True)
+        playback_hint.setStyleSheet("color: palette(placeholder-text);")
+        layout.addWidget(playback_hint)
+        playback_form = form_layout()
         backward, forward = QSpinBox(), QSpinBox()
-        skip_row = QHBoxLayout()
-        skip_row.setSpacing(8)
-        backward_label = QLabel(tr("Backward"))
-        backward_label.setBuddy(backward)
-        forward_label = QLabel(tr("Forward"))
-        forward_label.setBuddy(forward)
         for spin, value, label in (
             (backward, self.skip_backward, "Skip backward (seconds)"),
             (forward, self.skip_forward, "Skip forward (seconds)"),
@@ -1080,29 +1345,24 @@ class MainWindow(QMainWindow):
             spin.setRange(1, 120)
             spin.setValue(value)
             spin.setAccessibleName(tr(label))
-            spin.setMinimumWidth(64)
-        skip_row.addWidget(backward_label)
-        skip_row.addWidget(backward)
-        skip_row.addWidget(forward)
-        skip_row.addWidget(forward_label)
-        skip_row.addStretch()
-        layout.addRow(tr("Skip (s):"), skip_row)
-        spacer = QWidget()
-        spacer.setFixedHeight(8)
-        layout.addRow(spacer)
+            spin.setSuffix(" s")
+            spin.setMinimumWidth(100)
+            spin.setMaximumWidth(120)
+        playback_form.addRow(tr("Backward"), backward)
+        playback_form.addRow(tr("Forward"), forward)
+        layout.addLayout(playback_form)
+        layout.addSpacing(8)
+        layout.addWidget(heading("Highlight timing"))
         timing_hint = QLabel(
             tr(
                 "Default highlight timing for this project. Individual throw overrides take precedence."
             )
         )
         timing_hint.setWordWrap(True)
+        timing_hint.setStyleSheet("color: palette(placeholder-text);")
+        layout.addWidget(timing_hint)
         before, after = QSpinBox(), QSpinBox()
-        clipping_row = QHBoxLayout()
-        clipping_row.setSpacing(8)
-        before_label = QLabel(tr("Before"))
-        before_label.setBuddy(before)
-        after_label = QLabel(tr("After impact"))
-        after_label.setBuddy(after)
+        timing_form = form_layout()
         for spin, value, label in (
             (before, self.project.pre_roll_ms // 1000, "Before impact"),
             (after, self.project.post_roll_ms // 1000, "After impact"),
@@ -1110,22 +1370,28 @@ class MainWindow(QMainWindow):
             spin.setRange(0, 30)
             spin.setValue(value)
             spin.setAccessibleName(tr(label))
-            spin.setMinimumWidth(64)
-        clipping_row.addWidget(before_label)
-        clipping_row.addWidget(before)
-        clipping_row.addWidget(after)
-        clipping_row.addWidget(after_label)
-        clipping_row.addStretch()
-        layout.addRow(tr("Highlight clipping (s):"), clipping_row)
-        timing_hint.setStyleSheet("color: palette(placeholder-text);")
-        timing_hint.setMaximumWidth(480)
-        layout.addRow(timing_hint)
+            spin.setSuffix(" s")
+            spin.setMinimumWidth(100)
+            spin.setMaximumWidth(120)
+        timing_form.addRow(tr("Before impact"), before)
+        timing_form.addRow(tr("After impact"), after)
+        layout.addLayout(timing_form)
+        labels = [
+            form.itemAt(row, QFormLayout.ItemRole.LabelRole).widget()
+            for form in (playback_form, timing_form)
+            for row in range(form.rowCount())
+        ]
+        label_width = max(label.sizeHint().width() for label in labels)
+        for label in labels:
+            label.setMinimumWidth(label_width)
+        layout.addSpacing(8)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
+        buttons.button(QDialogButtonBox.StandardButton.Save).setProperty("primary", True)
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
-        layout.addRow(buttons)
+        layout.addWidget(buttons)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         self.skip_backward, self.skip_forward = backward.value(), forward.value()
@@ -1148,6 +1414,50 @@ class MainWindow(QMainWindow):
         self.shortcut_actions["Right"].setText(
             tr("Seek forward {seconds} seconds", seconds=self.skip_forward)
         )
+        self._refresh_transport_controls()
+
+    def _refresh_transport_controls(self) -> None:
+        playing = self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        for button, symbol in (
+            (
+                self.play_button,
+                QStyle.StandardPixmap.SP_MediaPause
+                if playing
+                else QStyle.StandardPixmap.SP_MediaPlay,
+            ),
+            (self.back_button, QStyle.StandardPixmap.SP_MediaSeekBackward),
+            (self.forward_button, QStyle.StandardPixmap.SP_MediaSeekForward),
+        ):
+            pixmap = self.style().standardIcon(symbol).pixmap(18, 18)
+            painter = QPainter(pixmap)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+            painter.fillRect(
+                pixmap.rect(),
+                button.palette().color(QPalette.ColorGroup.Active, QPalette.ColorRole.ButtonText),
+            )
+            painter.end()
+            button.setIcon(QIcon(pixmap))
+        for button, key, label in (
+            (self.play_button, "Space", tr("Pause") if playing else tr("Play")),
+            (
+                self.back_button,
+                "Left",
+                tr("Seek backward {seconds} seconds", seconds=self.skip_backward),
+            ),
+            (
+                self.forward_button,
+                "Right",
+                tr("Seek forward {seconds} seconds", seconds=self.skip_forward),
+            ),
+            (self.mark_button, "M", tr("Mark impact")),
+        ):
+            shortcut = (
+                self.shortcut_actions[key]
+                .shortcut()
+                .toString(QKeySequence.SequenceFormat.NativeText)
+            )
+            button.setAccessibleName(label)
+            button.setToolTip(f"{label} ({shortcut})" if shortcut else label)
 
     def _apply_hotkeys(self, bindings: dict[str, str]) -> None:
         for key, action in self.configurable_actions.items():
@@ -1155,6 +1465,8 @@ class MainWindow(QMainWindow):
         self._refresh_hotkey_hint()
 
     def _refresh_hotkey_hint(self) -> None:
+        self.slider.setAccessibleName(tr("Video timeline"))
+        self.impact_table.setAccessibleName(tr("Highlights"))
         self._refresh_skip_labels()
         self.thrower_shortcut_hint.setText(
             tr(
@@ -1169,6 +1481,7 @@ class MainWindow(QMainWindow):
                 or tr("Unassigned"),
             )
         )
+        self._update_action_states()
 
     def _change_language(self, code: str) -> None:
         if self.render_thread is not None:
@@ -1189,20 +1502,17 @@ class MainWindow(QMainWindow):
             (self.thrower_shortcut_hint, ",=next  .=previous"),
             (self.round_end_button, "Mark round 1 end"),
             (self.game_end_button, "Mark game end"),
-            (self.timeline_label, "Timeline events"),
+            (self.match_heading, "Match"),
+            (self.marking_heading, "Marking"),
+            (self.timeline_label, "Highlights"),
+            (self.preview_button, "Preview selected"),
             (self.remove_button, "Remove selected"),
             (self.edit_button, "Edit selected…"),
             (self.export_button, "Export highlights…"),
             (self.about_action, "&About Kyykkä Editor…"),
         ):
             widget.setText(tr(source))
-        self.play_button.setText(
-            tr(
-                "Pause"
-                if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
-                else "Play"
-            )
-        )
+        self._refresh_transport_controls()
         for menu, source in (
             (self.file_menu, "&File"),
             (self.settings_menu, "&Settings"),
@@ -1237,7 +1547,6 @@ class MainWindow(QMainWindow):
                 else "Loaded: {name}"
             )
             self.video_status.setText(tr(source, name=Path(self.project.video_path).name))
-        self.statusBar().clearMessage()
         self._refresh_hotkey_hint()
 
     def _dropped_path(self, mime: QMimeData) -> Path | None:
@@ -1349,7 +1658,7 @@ class MainWindow(QMainWindow):
         self.saved_project = project_data(self.project)
         self._clear_recovery()
         self._update_project_title()
-        self._show_undo_toast(tr("Project saved"))
+        self.toast.notify(tr("Project saved"))
         return True
 
     def open_project(self) -> None:
@@ -1480,11 +1789,7 @@ class MainWindow(QMainWindow):
         self.player.positionChanged.connect(self._position_changed)
         self.player.durationChanged.connect(self._duration_changed)
         self.player.mediaStatusChanged.connect(self._media_status_changed)
-        self.player.playbackStateChanged.connect(
-            lambda state: self.play_button.setText(
-                tr("Pause") if state == QMediaPlayer.PlaybackState.PlayingState else tr("Play")
-            )
-        )
+        self.player.playbackStateChanged.connect(self._refresh_transport_controls)
         self.player.errorOccurred.connect(self._playback_error)
         self.player.seekableChanged.connect(self._update_action_states)
         self.player.seekableChanged.connect(self._restore_position)
@@ -1594,6 +1899,9 @@ class MainWindow(QMainWindow):
         self._record_undo("Mark impact")
         self.project.add_impact(self.player.position(), self.thrower_combo.currentText())
         self._refresh_impacts()
+        self.toast.notify(
+            tr("Throw marked at {time}", time=format_timestamp(self.player.position()))
+        )
 
     def _record_undo(self, action: str) -> None:
         selected = tuple(sorted({index.row() for index in self.impact_table.selectedIndexes()}))
@@ -1613,7 +1921,7 @@ class MainWindow(QMainWindow):
                     item.setSelected(True)
         if previous.selected_rows:
             self.impact_table.scrollToItem(self.impact_table.item(previous.selected_rows[0], 0))
-        self._show_undo_toast(tr("Undid: {action}", action=tr(previous.action)))
+        self.toast.notify(tr("Undid: {action}", action=tr(previous.action)))
 
     def _timeline_context_menu(self, position: QPoint) -> None:
         item = self.impact_table.itemAt(position)
@@ -1777,6 +2085,16 @@ class MainWindow(QMainWindow):
         return sorted(items, key=lambda item: (item[1], item[0]))
 
     def _refresh_impacts(self) -> None:
+        names = (
+            [self.project.team_one]
+            if self.project.solo
+            else [self.project.team_one, self.project.team_two]
+        )
+        matchup = " vs. ".join(name.strip() for name in names if name.strip())
+        title = self.project.title.strip()
+        summary = "\n".join(text for text in (title, matchup if matchup != title else "") if text)
+        self.match_summary.setText(summary or tr("Untitled project"))
+        self.match_summary.setToolTip(summary)
         self.stop_preview()
         self.slider.set_markers(
             [impact.timestamp_ms for impact in self.project.impacts],
@@ -1885,6 +2203,90 @@ class MainWindow(QMainWindow):
         self.export_button.setEnabled(
             idle and ready and self.exportable_count > 0 and self.estimated_duration is not None
         )
+        self.preview_button.setEnabled(self.shortcut_actions["P"].isEnabled())
+        timeline = self._timeline_items()
+        rows = {index.row() for index in self.impact_table.selectedIndexes()}
+        self.slider.set_selected_markers(
+            {
+                ("Impact" if timeline[row][2] is not None else timeline[row][0], timeline[row][1])
+                for row in rows
+                if row < len(timeline)
+            }
+        )
+        self._refresh_action_guidance(idle, ready, seekable)
+
+    def _refresh_action_guidance(self, idle: bool, ready: bool, seekable: bool) -> None:
+        shortcut = (
+            self.shortcut_actions["M"].shortcut().toString(QKeySequence.SequenceFormat.NativeText)
+        )
+        hint = (
+            tr("Press {shortcut} or use Mark impact to mark a throw.", shortcut=shortcut)
+            if shortcut
+            else tr("Use Mark impact to mark a throw.")
+        )
+        self.empty_highlights.setText(tr("No throws marked yet.") + "\n\n" + hint)
+        self.empty_highlights.setVisible(self.impact_table.rowCount() == 0)
+        if not idle:
+            unavailable = tr("Wait for the export to finish, or cancel it.")
+        elif not self.project.video_path:
+            unavailable = tr("Choose a video in Match details.")
+        elif (
+            self.player.error() != QMediaPlayer.Error.NoError
+            or self.player.mediaStatus() == QMediaPlayer.MediaStatus.InvalidMedia
+        ):
+            unavailable = tr("The video could not be loaded. Choose another file in Match details.")
+        elif not ready:
+            unavailable = tr("Wait for the video to finish loading.")
+        else:
+            unavailable = ""
+        preview_reason = unavailable
+        if not preview_reason and not seekable:
+            preview_reason = tr("This video does not support seeking.")
+        if not preview_reason and not self.preview_button.isEnabled():
+            preview_reason = tr("Select one throw with a valid clip to preview.")
+        export_reason = unavailable
+        if not export_reason and not self.export_button.isEnabled():
+            if (
+                self.project.round_one_end_ms is not None
+                and self.project.game_end_ms is not None
+                and self.project.round_one_end_ms > self.project.game_end_ms
+            ):
+                export_reason = tr("Round 1 must end before the game ends.")
+            else:
+                export_reason = tr(
+                    "Mark a throw within the video and check its before/after timing."
+                )
+        for button, key, reason in (
+            (self.preview_button, "P", preview_reason),
+            (self.export_button, None, export_reason),
+        ):
+            text = reason or button.text()
+            if key and not reason:
+                sequence = (
+                    self.shortcut_actions[key]
+                    .shortcut()
+                    .toString(QKeySequence.SequenceFormat.NativeText)
+                )
+                if sequence:
+                    text += f" ({sequence})"
+            button.setToolTip(text)
+            button.setAccessibleDescription(reason)
+            if key:
+                self.shortcut_actions[key].setToolTip(text)
+        reasons = []
+        if preview_reason:
+            reasons.append(tr("Preview: {reason}", reason=preview_reason))
+        if export_reason and export_reason != preview_reason:
+            reasons.append(tr("Export: {reason}", reason=export_reason))
+        self.action_guidance.setText(unavailable or "\n".join(reasons))
+        self.action_guidance.setVisible(bool(self.action_guidance.text()))
+        for button in (
+            self.play_button,
+            self.mark_button,
+            self.round_end_button,
+            self.game_end_button,
+        ):
+            button.setAccessibleDescription(unavailable)
 
     def _refresh_export_summary(self) -> None:
         self._update_project_title()
@@ -1961,6 +2363,7 @@ class MainWindow(QMainWindow):
         else:
             self.player.setSource(QUrl())
             self.video_status.setText(tr("No video selected"))
+            self.video_status.setToolTip("")
         self._update_action_states()
 
     def export_video(self) -> None:
@@ -2050,7 +2453,6 @@ class MainWindow(QMainWindow):
             return
         self.export_button.setEnabled(False)
         self.export_button.setText(tr("Rendering…"))
-        self.statusBar().showMessage(tr("Rendering highlights…"))
         snapshot = deepcopy(self.project)
         self.render_thread = RenderThread(snapshot, Path(filename), self.player.duration())
         self._update_action_states()
@@ -2082,22 +2484,18 @@ class MainWindow(QMainWindow):
         if self.render_thread is not None:
             self.render_thread.deleteLater()
             self.render_thread = None
-        self._update_action_states()
         self.export_button.setText(tr("Export highlights…"))
+        self._update_action_states()
         outcome = self.render_outcome
         self.render_outcome = None
         if outcome is not None:
             kind, message = outcome
             if kind == "success":
-                self.statusBar().showMessage(tr("Export complete"), 5_000)
-                QMessageBox.information(
-                    self, tr("Export complete"), tr("Saved highlights to:\n{path}", path=message)
-                )
+                self.toast.notify(tr("Export complete: {path}", path=message), 6000)
             elif kind == "error":
-                self.statusBar().clearMessage()
                 QMessageBox.critical(self, tr("Export failed"), message)
             else:
-                self.statusBar().showMessage(tr("Export cancelled"), 5_000)
+                self.toast.notify(tr("Export cancelled"))
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self.render_thread is not None:
@@ -2111,6 +2509,10 @@ class MainWindow(QMainWindow):
         self._remember_position()
         self._clear_recovery()
         self.autosave_timer.stop()
+        if self.persistence_started:
+            settings = QSettings("KyykkaEditor", "KyykkaEditor")
+            settings.setValue("workspace/geometry", self.saveGeometry())
+            settings.setValue("workspace/splitter", self.workspace_splitter.saveState())
         super().closeEvent(event)
 
     def _resume_key(self) -> str | None:

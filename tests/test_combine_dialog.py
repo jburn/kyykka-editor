@@ -29,12 +29,17 @@ def test_file_order_add_remove_and_boundaries(qapp, tmp_path, monkeypatch):
     )
     dialog = CombineVideosDialog()
     assert not dialog.combine_button.isEnabled()
+    assert not dialog.empty_label.isHidden()
     dialog.add_button.click()
     assert dialog.paths() == paths
+    assert dialog.empty_label.isHidden()
+    assert dialog.videos.item(0).text() == "1.  game2.mp4"
     assert not dialog.down_button.isEnabled()
     dialog.videos.setCurrentRow(1)
     dialog.up_button.click()
     assert dialog.paths() == [paths[1], paths[0], paths[2]]
+    assert dialog.videos.item(0).text() == "1.  game1.mp4"
+    assert dialog.videos.item(1).text() == "2.  game2.mp4"
     assert not dialog.up_button.isEnabled()
     dialog.down_button.click()
     assert dialog.paths() == paths
@@ -55,6 +60,8 @@ def test_menu_tool_does_not_modify_current_project(qapp, tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(CombineVideosDialog, "exec", lambda self: calls.append(self))
     action = next(a for a in window.file_menu.actions() if a.text() == tr("Combine videos…"))
+    assert action not in window.hotkeys_menu.actions()
+    assert window.configurable_actions["Ctrl+O"] in window.hotkeys_menu.actions()
     action.trigger()
     assert len(calls) == 1
     assert window.project == original
@@ -138,5 +145,7 @@ def test_conversion_confirmation_passes_order_and_output_to_worker(qapp, tmp_pat
     finish_worker(qapp, dialog)
     assert calls[0][0] == (videos, output)
     assert calls[0][1]["convert"] is True
-    assert str(output) in messages[0][2]
+    assert not messages
+    assert str(output) in dialog.toast.text()
+    assert not dialog.toast.isHidden()
     dialog.reject()

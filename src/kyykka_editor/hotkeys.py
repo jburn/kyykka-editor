@@ -2,12 +2,12 @@
 
 import json
 
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
-    QFormLayout,
+    QHBoxLayout,
     QKeySequenceEdit,
     QLabel,
     QPushButton,
@@ -16,17 +16,26 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .dialog_style import dialog_layout, form_layout, heading
 from .i18n import tr
 
 
 def conflicting_bindings(bindings: dict[str, str]) -> bool:
-    sequences = [QKeySequence(value) for value in bindings.values() if value]
-    return any(
-        left.matches(right) != QKeySequence.SequenceMatch.NoMatch
-        or right.matches(left) != QKeySequence.SequenceMatch.NoMatch
-        for index, left in enumerate(sequences)
-        for right in sequences[index + 1 :]
-    )
+    return bool(binding_conflicts(bindings))
+
+
+def binding_conflicts(bindings: dict[str, str]) -> dict[str, list[str]]:
+    sequences = [(key, QKeySequence(value)) for key, value in bindings.items() if value]
+    conflicts: dict[str, list[str]] = {}
+    for index, (left_key, left) in enumerate(sequences):
+        for right_key, right in sequences[index + 1 :]:
+            if (
+                left.matches(right) != QKeySequence.SequenceMatch.NoMatch
+                or right.matches(left) != QKeySequence.SequenceMatch.NoMatch
+            ):
+                conflicts.setdefault(left_key, []).append(right_key)
+                conflicts.setdefault(right_key, []).append(left_key)
+    return conflicts
 
 
 def load_bindings(defaults: dict[str, str]) -> dict[str, str]:
@@ -48,45 +57,98 @@ class HotkeysDialog(QDialog):
     def __init__(self, actions, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("Configure hotkeys"))
-        self.resize(500, 600)
-        layout = QVBoxLayout(self)
+        self.resize(620, 660)
+        layout = dialog_layout(self)
         hint = QLabel(
             tr("Select a shortcut and press the new keys. Clear it to disable the shortcut.")
         )
         hint.setWordWrap(True)
+        hint.setStyleSheet("color: palette(placeholder-text);")
         layout.addWidget(hint)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         page = QWidget()
-        form = QFormLayout(page)
+        sections = QVBoxLayout(page)
+        sections.setContentsMargins(0, 0, 12, 0)
+        sections.setSpacing(12)
         self.editors = {}
-        for key, action in actions.items():
-            editor = QKeySequenceEdit(action.shortcut())
-            editor.setMaximumSequenceLength(1)
-            editor.setClearButtonEnabled(True)
-            form.addRow(
-                action.text()
-                if key in ("Left", "Right")
-                else tr(action.property("translation_source")),
-                editor,
-            )
-            self.editors[key] = editor
+        self.conflict_labels = {}
+        self.action_names = {}
+        self.error_color = (
+            "#e58b8b" if self.palette().window().color().lightness() < 128 else "#b44747"
+        )
+        groups = [
+            ("Playback", ("Space", "Left", "Right", "P", "Escape")),
+            ("Marking", ("M", ",", ".", "Ctrl+R", "Ctrl+G", "E", "Delete", "Ctrl+Z")),
+            ("Project", ("Ctrl+N", "Ctrl+O", "Ctrl+S", "Ctrl+Shift+S", "Ctrl+D")),
+        ]
+        grouped = {key for _, keys in groups for key in keys}
+        groups.append(("Other actions", tuple(key for key in actions if key not in grouped)))
+        for title, keys in groups:
+            if not any(key in actions for key in keys):
+                continue
+            sections.addWidget(heading(title))
+            form = form_layout()
+            form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+            for key in keys:
+                if key not in actions:
+                    continue
+                action = actions[key]
+                name = (
+                    action.text()
+                    if key in ("Left", "Right")
+                    else tr(action.property("translation_source") or action.text())
+                )
+                self.action_names[key] = name
+                editor = QKeySequenceEdit(action.shortcut())
+                editor.setAccessibleName(name)
+                editor.setMinimumWidth(180)
+                editor.setMaximumSequenceLength(1)
+                editor.setClearButtonEnabled(True)
+                field = QVBoxLayout()
+                field.setSpacing(4)
+                field.addWidget(editor)
+                conflict = QLabel()
+                conflict.setWordWrap(True)
+                conflict.setStyleSheet(f"color: {self.error_color};")
+                field.addWidget(conflict)
+                label = QLabel(name)
+                label.setWordWrap(True)
+                label.setFixedWidth(210)
+                label.setBuddy(editor)
+                form.addRow(label, field)
+                self.editors[key] = editor
+                self.conflict_labels[key] = conflict
+            sections.addLayout(form)
+            sections.addSpacing(8)
+        sections.addStretch()
         scroll.setWidget(page)
-        layout.addWidget(scroll)
+        layout.addWidget(scroll, 1)
         self.validation = QLabel()
-        self.validation.setStyleSheet("color: #c65b5b;")
-        self.validation.setMinimumHeight(self.validation.fontMetrics().height() * 2)
+        self.validation.setStyleSheet(f"color: {self.error_color};")
         self.validation.setWordWrap(True)
         layout.addWidget(self.validation)
         reset = QPushButton(tr("Restore defaults"))
+        reset.setAutoDefault(False)
         reset.clicked.connect(self._reset)
-        layout.addWidget(reset)
+        reset_hint = QLabel(
+            tr("Restored defaults take effect only when you save. Cancel discards changes.")
+        )
+        reset_hint.setWordWrap(True)
+        reset_hint.setStyleSheet("color: palette(placeholder-text);")
+        layout.addWidget(reset_hint)
+        footer = QHBoxLayout()
+        footer.addWidget(reset)
+        footer.addStretch()
         self.buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
+        self.buttons.button(QDialogButtonBox.StandardButton.Save).setProperty("primary", True)
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
-        layout.addWidget(self.buttons)
+        footer.addWidget(self.buttons)
+        layout.addLayout(footer)
         for editor in self.editors.values():
             editor.keySequenceChanged.connect(self._validate)
         self._validate()
@@ -102,13 +164,30 @@ class HotkeysDialog(QDialog):
             editor.setKeySequence(QKeySequence(key))
 
     def _validate(self) -> None:
-        conflict = conflicting_bindings(self.bindings())
+        conflicts = binding_conflicts(self.bindings())
+        for key, editor in self.editors.items():
+            others = conflicts.get(key, [])
+            message = (
+                tr(
+                    "Conflicts with: {actions}",
+                    actions=", ".join(self.action_names[item] for item in others),
+                )
+                if others
+                else ""
+            )
+            self.conflict_labels[key].setText(message)
+            self.conflict_labels[key].setVisible(bool(others))
+            editor.setAccessibleDescription(message)
+            editor.setStyleSheet(
+                f"QKeySequenceEdit {{ border: 1px solid {self.error_color}; }}" if others else ""
+            )
         self.validation.setText(
             tr("Two actions use the same shortcut. Choose unique shortcuts before saving.")
-            if conflict
+            if conflicts
             else ""
         )
-        self.buttons.button(QDialogButtonBox.StandardButton.Save).setEnabled(not conflict)
+        self.validation.setVisible(bool(conflicts))
+        self.buttons.button(QDialogButtonBox.StandardButton.Save).setEnabled(not conflicts)
 
     def accept(self) -> None:
         if conflicting_bindings(self.bindings()):

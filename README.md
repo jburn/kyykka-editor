@@ -231,10 +231,20 @@ play its export interval in the video player. Preview includes timing overrides
 and extra first/last-throw footage, then pauses at the end. **Escape** stops the
 preview; manual seeking exits preview mode. Both shortcuts are configurable.
 This previews footage boundaries, without rendering cards or transitions.
+You can also use **Preview selected** below the highlights list. Guidance below
+the controls explains when preview or export is unavailable. The empty list
+shows the current marking shortcut, and selecting an event outlines its marker
+on the video timeline. Tab moves from the list to the available action buttons.
 
-Use **Settings → Configure hotkeys** to change keyboard shortcuts. Select a field
-and press the new key combination, or clear it to disable that shortcut. Duplicate
-bindings must be resolved before saving. **Restore defaults** resets the fields;
+Saving, marking throws, export completion, and cancellation use temporary floating
+toasts. Combine videos also shows its result and output path in a toast; errors
+and confirmation questions still use dialogs.
+
+Use **Settings → Configure hotkeys** to change keyboard shortcuts, grouped into
+Playback, Marking, and Project actions. Select a field and press the new key
+combination, or clear it to disable that shortcut. Conflicts identify the other
+action beside each affected field and must be resolved before saving.
+**Restore defaults** resets the fields;
 Save applies and remembers the changes. Help → Hotkeys, context menus and the
 thrower hint reflect your bindings. The shortcuts listed above are the defaults.
 
@@ -258,7 +268,7 @@ Autosave preserves recovery data but does not clear this marker.
 
 Use **File → Combine videos…** to join exported match videos into one series
 video independently of the current project. Add at least two videos, arrange
-them with **Move up** / **Move down**, then choose **Combine…** and an output MP4.
+them with **Move up** / **Move down**, then choose **Combine and save…** and an output MP4.
 Compatible files are joined without re-encoding. If conversion is needed, the
 tool asks first: it uses the first video's size and frame rate, fits other videos
 without cropping, and produces H.264 video with stereo AAC audio when any input
@@ -270,6 +280,12 @@ only after successful completion, and input videos cannot be overwritten.
 When no video is selected, the playback area shows a theme-matching placeholder.
 Click **Match details** there to choose a video. A thin, muted border outlines
 the playback area with or without a video loaded.
+
+Drag the divider between the video and sidebar to adjust their widths. The app
+remembers the divider position and window size, position, and maximized state
+when you close it. Playback and marking controls stack when the video pane is
+narrow. Hover over transport buttons to see their actions and current shortcuts,
+or over a shortened filename or player name to see the full text.
 
 Project files contain match
 details, player lists, marks, timing settings and overrides, and a reference to

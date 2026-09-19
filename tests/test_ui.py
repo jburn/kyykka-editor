@@ -436,7 +436,7 @@ def test_main_window_timeline_is_sorted_and_player_list_is_fixed(
     )
     window._load_form()
     assert not window.thrower_combo.isEditable()
-    assert not window.impact_table.verticalHeader().isHidden()
+    assert window.impact_table.verticalHeader().isHidden()
     assert window.impact_table.columnCount() == 2
     assert [window.impact_table.horizontalHeaderItem(column).text() for column in range(2)] == [
         "Event",
@@ -529,7 +529,7 @@ def test_render_dialog_cancel_stays_open_until_worker_finishes(qapp, monkeypatch
     assert not dialog.isVisible()
     assert window.render_thread is None
     assert window.export_button.isEnabled()
-    assert window.statusBar().currentMessage() == "Export cancelled"
+    assert window.toast.text() == "Export cancelled"
     window.close()
 
 
