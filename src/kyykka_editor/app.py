@@ -551,9 +551,16 @@ class SeekSlider(QSlider):
 class RenderDialog(QDialog):
     cancel_requested = Signal()
 
-    def __init__(self, parent: QWidget) -> None:
+    def __init__(
+        self,
+        parent: QWidget,
+        *,
+        title: str = "Rendering highlights",
+        activity: str = "Rendering highlights…",
+    ) -> None:
         super().__init__(parent)
-        self.setWindowTitle(tr("Rendering highlights"))
+        self.activity = activity
+        self.setWindowTitle(tr(title))
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.setMinimumWidth(380)
         layout = QVBoxLayout(self)
@@ -584,9 +591,7 @@ class RenderDialog(QDialog):
             return
         self.progress.setRange(0, 100)
         self.progress.setValue(max(self.progress.value(), min(100, max(0, percent))))
-        self.status.setText(
-            tr("Finalizing video…") if percent >= 99 else tr("Rendering highlights…")
-        )
+        self.status.setText(tr("Finalizing video…") if percent >= 99 else tr(self.activity))
 
     def done(self, result: int) -> None:
         self.elapsed_timer.stop()
@@ -1008,6 +1013,11 @@ class MainWindow(QMainWindow):
             menu.addAction(action)
             self.configurable_actions[shortcut] = action
 
+        menu.addSeparator()
+        combine_action = menu.addAction(tr("Combine videos…"))
+        combine_action.setProperty("translation_source", "Combine videos…")
+        combine_action.triggered.connect(self.combine_videos)
+
         self.settings_menu = self.menuBar().addMenu(tr("&Settings"))
         preferences_action = self.settings_menu.addAction(tr("Preferences"))
         preferences_action.setProperty("translation_source", "Preferences")
@@ -1259,6 +1269,14 @@ class MainWindow(QMainWindow):
             self._open_project_path(path)
         else:
             self.new_project(video_path=str(path.resolve()))
+
+    def combine_videos(self) -> None:
+        if self.render_thread is not None:
+            return
+        from .combine_dialog import CombineVideosDialog
+
+        self.player.pause()
+        CombineVideosDialog(self).exec()
 
     def new_project(self, *, video_path: str = "") -> None:
         if self.render_thread is not None:

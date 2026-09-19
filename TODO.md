@@ -1,4 +1,3 @@
-- Add a standalone "File → Combine videos…" tool: select exported match videos, arrange them in game order, and join them into a single series video. Use FFmpeg without re-encoding for compatible files, offer conversion to a common format when needed, and reuse the progress/cancel popup. Keep it independent of projects, marks, and series tracking.
 - Make builds for linux and Mac
 - Deliver sha256 hashes with executables
 - Complete UI cleanup and polish

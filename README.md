@@ -239,6 +239,17 @@ export. The title bar shows
 the project filename (or “Untitled project”) with an asterisk for unsaved changes.
 Autosave preserves recovery data but does not clear this marker.
 
+Use **File → Combine videos…** to join exported match videos into one series
+video independently of the current project. Add at least two videos, arrange
+them with **Move up** / **Move down**, then choose **Combine…** and an output MP4.
+Compatible files are joined without re-encoding. If conversion is needed, the
+tool asks first: it uses the first video's size and frame rate, fits other videos
+without cropping, and produces H.264 video with stereo AAC audio when any input
+has audio. Silent inputs receive silence; only the first video and audio tracks
+are included. Conversion takes longer and may slightly reduce quality.
+The progress window supports cancellation. Existing output files are replaced
+only after successful completion, and input videos cannot be overwritten.
+
 When no video is selected, the playback area shows a theme-matching placeholder.
 Click **Match details** there to choose a video. A thin, muted border outlines
 the playback area with or without a video loaded.
