@@ -79,6 +79,9 @@ class CardSettingsDialog(QDialog):
                         for style in styles.values()
                     ):
                         continue
+                    for style in styles.values():
+                        if style.background_mode == "static":
+                            style.background_mode = "image" if style.background_image else "color"
                     self.presets[name] = styles
                 except (TypeError, KeyError):
                     continue
