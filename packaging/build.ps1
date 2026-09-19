@@ -88,4 +88,7 @@ foreach ($OutputPath in $RequiredOutput) {
     }
 }
 
+& (Join-Path $PSScriptRoot "write-checksum.ps1") `
+    -Path (Join-Path $OutputDirectory "KyykkaEditor.exe")
+
 Write-Host "Package created at $OutputDirectory"

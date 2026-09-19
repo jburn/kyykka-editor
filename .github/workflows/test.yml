@@ -61,6 +61,7 @@ jobs:
         run: |
           $required = @(
             "dist/KyykkaEditor/KyykkaEditor.exe",
+            "dist/KyykkaEditor/sha256.txt",
             "dist/KyykkaEditor/_internal/kyykka_editor/bin/ffmpeg.exe",
             "dist/KyykkaEditor/_internal/kyykka_editor/bin/ffprobe.exe",
             "dist/KyykkaEditor/_internal/kyykka_editor/translations/qtbase_fi.qm",
@@ -97,12 +98,15 @@ jobs:
             -Path dist/KyykkaEditor `
             -DestinationPath dist/KyykkaEditor-windows-x64.zip `
             -CompressionLevel Optimal
+          .\packaging\write-checksum.ps1 -Path dist/KyykkaEditor-windows-x64.zip
       - name: Stage release archive
         if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: release-package
-          path: dist/KyykkaEditor-windows-x64.zip
+          path: |
+            dist/KyykkaEditor-windows-x64.zip
+            dist/sha256.txt
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
@@ -119,17 +123,21 @@ jobs:
         with:
           name: release-package
           path: dist
+      - name: Verify release archive checksum
+        working-directory: dist
+        run: sha256sum --check --strict sha256.txt
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           asset="dist/KyykkaEditor-windows-x64.zip#Kyykka Editor for Windows (x64)"
+          checksum="dist/sha256.txt#SHA-256 checksum"
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "$asset" \
+            gh release upload "$GITHUB_REF_NAME" "$asset" "$checksum" \
               --clobber \
               --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$GITHUB_REF_NAME" "$asset" \
+            gh release create "$GITHUB_REF_NAME" "$asset" "$checksum" \
               --repo "$GITHUB_REPOSITORY" \
               --verify-tag \
               --generate-notes \

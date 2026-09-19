@@ -1,3 +1,1 @@
-- Make builds for linux and Mac
-- Deliver sha256 hashes with executables
 - Complete UI cleanup and polish
