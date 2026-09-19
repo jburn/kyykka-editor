@@ -148,6 +148,7 @@ FINNISH = {
     "Open video": "Avaa video",
     "Video files (*.mp4 *.mov *.mkv *.avi *.m4v);;All files (*)": "Videotiedostot (*.mp4 *.mov *.mkv *.avi *.m4v);;Kaikki tiedostot (*)",
     "No video selected": "Videota ei ole valittu",
+    "No video file selected": "Videotiedostoa ei ole valittu",
     "Rendering highlights": "Koostevideon luonti",
     "Rendering video. This can take several minutes…": "Luodaan videota. Tämä voi kestää useita minuutteja…",
     "Cancel": "Peruuta",

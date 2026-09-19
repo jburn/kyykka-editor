@@ -639,11 +639,13 @@ class RenderThread(QThread):
 class VideoPreview(QGraphicsView):
     """Compose the video and editing overlay in the same graphics scene."""
 
+    details_requested = Signal()
+
     def __init__(self) -> None:
         super().__init__()
         self.setScene(QGraphicsScene(self))
-        self.setBackgroundBrush(QBrush(QColor("black")))
         self.setFrameShape(QGraphicsView.Shape.NoFrame)
+        self.setStyleSheet("VideoPreview { border: 1px solid palette(mid); }")
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setMinimumSize(160, 90)
@@ -659,6 +661,37 @@ class VideoPreview(QGraphicsView):
         self.thrower = ""
         self.overlay.hide()
         self.video_item.nativeSizeChanged.connect(self._layout_video)
+        self.empty_label = QLabel(self.viewport())
+        self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_label.setWordWrap(True)
+        self.empty_label.setStyleSheet("color: palette(placeholder-text); border: none;")
+        self.details_button = QPushButton(self.viewport())
+        self.details_button.clicked.connect(self.details_requested.emit)
+        layout = QVBoxLayout(self.viewport())
+        layout.addStretch()
+        layout.addWidget(self.empty_label)
+        layout.addWidget(self.details_button, 0, Qt.AlignmentFlag.AlignHCenter)
+        layout.addStretch()
+        self.retranslate()
+        self.set_video_selected(False)
+
+    def retranslate(self) -> None:
+        self.empty_label.setText(tr("No video file selected"))
+        self.details_button.setText(tr("Match details"))
+
+    def set_video_selected(self, selected: bool) -> None:
+        self.video_item.setVisible(selected)
+        self.empty_label.setVisible(not selected)
+        self.details_button.setVisible(not selected)
+        self.viewport().update()
+
+    def drawBackground(self, painter: QPainter, rect: QRectF) -> None:
+        painter.fillRect(
+            rect,
+            QBrush(QColor("black"))
+            if self.video_item.isVisible()
+            else self.window().palette().window(),
+        )
 
     def set_thrower(self, name: str) -> None:
         self.thrower = name
@@ -749,6 +782,10 @@ class MainWindow(QMainWindow):
         # Let file drops over the graphics viewport reach the main window.
         self.video.setAcceptDrops(False)
         self.player.setVideoOutput(self.video.video_item)
+        self.player.sourceChanged.connect(
+            lambda source: self.video.set_video_selected(not source.isEmpty())
+        )
+        self.video.details_requested.connect(self.edit_project_details)
 
         self._build_ui()
         self._build_menu()
@@ -805,6 +842,10 @@ class MainWindow(QMainWindow):
 
         source_row = QHBoxLayout()
         self.video_status = QLabel(tr("No video selected"))
+        status_font = self.video_status.font()
+        status_font.setPointSizeF(max(8.0, status_font.pointSizeF() - 1.0))
+        self.video_status.setFont(status_font)
+        self.video_status.setStyleSheet("color: palette(placeholder-text);")
         self.video_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         source_row.addWidget(self.video_status, 1)
         self.preview_indicator = QLabel(tr("Previewing highlight"))
@@ -1126,6 +1167,7 @@ class MainWindow(QMainWindow):
         self._retranslate_ui()
 
     def _retranslate_ui(self) -> None:
+        self.video.retranslate()
         self.playback_speed.setToolTip(tr("Playback speed (export speed is unchanged)"))
         self.playback_speed.setAccessibleName(tr("Playback speed"))
         self.preview_indicator.setText(tr("Previewing highlight"))
@@ -1395,6 +1437,8 @@ class MainWindow(QMainWindow):
         self._autosave()
 
     def edit_project_details(self) -> None:
+        if self.render_thread is not None:
+            return
         dialog = ProjectDialog(self.project, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -1762,6 +1806,7 @@ class MainWindow(QMainWindow):
 
     def _update_action_states(self) -> None:
         idle = self.render_thread is None
+        self.video.details_button.setEnabled(idle)
         ready = (
             bool(self.project.video_path)
             and self.player.source()

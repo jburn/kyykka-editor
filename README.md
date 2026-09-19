@@ -239,6 +239,10 @@ export. The title bar shows
 the project filename (or “Untitled project”) with an asterisk for unsaved changes.
 Autosave preserves recovery data but does not clear this marker.
 
+When no video is selected, the playback area shows a theme-matching placeholder.
+Click **Match details** there to choose a video. A thin, muted border outlines
+the playback area with or without a video loaded.
+
 Project files contain match
 details, player lists, marks, timing settings and overrides, and a reference to
 the source video. The video itself is not copied; opening a project prompts you

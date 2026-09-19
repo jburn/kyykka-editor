@@ -265,6 +265,7 @@ def test_video_overlay_tracks_selection_and_stays_inside_video(qapp: QApplicatio
     window.show()
     frame = QImage(320, 180, QImage.Format.Format_RGB32)
     frame.fill(QColor("blue"))
+    window.video.set_video_selected(True)
     window.video.video_item.videoSink().setVideoFrame(QVideoFrame(frame))
     qapp.processEvents()
     assert not window.video.overlay.isVisible()

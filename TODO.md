@@ -1,4 +1,3 @@
-- Replace the black empty video area with a theme-matching placeholder showing subtle "No video file selected" text and a "Match details" link that opens the match details dialog to choose a video. Keep a thin, muted border around the playback area both with and without a video loaded.
 - Add a standalone "File → Combine videos…" tool: select exported match videos, arrange them in game order, and join them into a single series video. Use FFmpeg without re-encoding for compatible files, offer conversion to a common format when needed, and reuse the progress/cancel popup. Keep it independent of projects, marks, and series tracking.
 - Make builds for linux and Mac
 - Deliver sha256 hashes with executables
