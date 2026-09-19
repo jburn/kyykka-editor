@@ -19,6 +19,7 @@ os.environ.setdefault("QT_LOGGING_RULES", "qt.multimedia.ffmpeg.*=false")
 from PySide6.QtCore import (
     QElapsedTimer,
     QEvent,
+    QMimeData,
     QPoint,
     QPropertyAnimation,
     QRectF,
@@ -37,6 +38,8 @@ from PySide6.QtGui import (
     QBrush,
     QCloseEvent,
     QColor,
+    QDragEnterEvent,
+    QDropEvent,
     QFont,
     QFontDatabase,
     QFontMetrics,
@@ -737,11 +740,14 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Kyykkä Editor")
         self.setWindowIcon(QIcon(str(ICON_PATH)))
         self.resize(1180, 780)
+        self.setAcceptDrops(True)
 
         self.player = QMediaPlayer(self)
         self.audio = QAudioOutput(self)
         self.player.setAudioOutput(self.audio)
         self.video = VideoPreview()
+        # Let file drops over the graphics viewport reach the main window.
+        self.video.setAcceptDrops(False)
         self.player.setVideoOutput(self.video.video_item)
 
         self._build_ui()
@@ -1182,10 +1188,40 @@ class MainWindow(QMainWindow):
         self.statusBar().clearMessage()
         self._refresh_hotkey_hint()
 
-    def new_project(self) -> None:
+    def _dropped_path(self, mime: QMimeData) -> Path | None:
+        if self.render_thread is not None or not mime.hasUrls():
+            return None
+        urls = mime.urls()
+        if len(urls) != 1 or not urls[0].isLocalFile():
+            return None
+        path = Path(urls[0].toLocalFile())
+        if path.suffix.lower() not in (".kyykka", ".mp4", ".mov", ".mkv", ".avi", ".m4v"):
+            return None
+        return path if path.is_file() else None
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        if self._dropped_path(event.mimeData()) is not None:
+            event.setDropAction(Qt.DropAction.CopyAction)
+            event.accept()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event: QDropEvent) -> None:
+        path = self._dropped_path(event.mimeData())
+        if path is None:
+            event.ignore()
+            return
+        event.setDropAction(Qt.DropAction.CopyAction)
+        event.accept()
+        if path.suffix.lower() == ".kyykka":
+            self._open_project_path(path)
+        else:
+            self.new_project(video_path=str(path.resolve()))
+
+    def new_project(self, *, video_path: str = "") -> None:
         if self.render_thread is not None:
             return
-        candidate = EditorProject(**load_card_defaults())
+        candidate = EditorProject(video_path=video_path, **load_card_defaults())
         dialog = ProjectDialog(candidate, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
