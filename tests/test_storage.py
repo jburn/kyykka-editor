@@ -6,6 +6,84 @@ from kyykka_editor.model import EditorProject, Impact
 from kyykka_editor.storage import project_data, read_project, write_project
 
 
+@pytest.fixture(autouse=True)
+def isolated_settings(tmp_path, monkeypatch):
+    from PySide6.QtCore import QSettings
+
+    from kyykka_editor import app, card_settings, hotkeys
+
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    for module in (app, card_settings, hotkeys):
+        monkeypatch.setattr(module, "QSettings", lambda *args: settings)
+    monkeypatch.setattr(app.QStandardPaths, "writableLocation", lambda *args: str(tmp_path))
+
+
+@pytest.mark.parametrize("failure", ["corrupt", "missing_video"])
+@pytest.mark.parametrize("finish", ["close", "save", "autosave"])
+def test_failed_recovery_survives_new_session(qapp, tmp_path, monkeypatch, failure, finish):
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+    from kyykka_editor.app import MainWindow
+    from kyykka_editor.i18n import tr
+
+    original = tmp_path / "recovery.kyykka"
+    if failure == "corrupt":
+        original.write_bytes(b"broken project data")
+    else:
+        write_project(original, EditorProject(video_path=str(tmp_path / "missing.mp4")))
+    contents = original.read_bytes()
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: None)
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", lambda *args: ("", ""))
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda parent, title, *args: (
+            QMessageBox.StandardButton.Discard
+            if title == tr("Unsaved project")
+            else QMessageBox.StandardButton.Yes
+        ),
+    )
+    window = MainWindow()
+    window.start_session()
+    assert window.recovery_path != original
+    if finish != "close":
+        window.project.title = "New work"
+        window._autosave()
+        assert read_project(window.recovery_path).title == "New work"
+    if finish == "save":
+        window.project_path = tmp_path / "saved.kyykka"
+        assert window.save_project()
+    if finish == "autosave":
+        # Simulate a crash: preserve this session's autosave for the next launch.
+        window.persistence_started = False
+    window.close()
+    assert original.read_bytes() == contents
+    if finish == "autosave":
+        restored = MainWindow()
+        restored.start_session()
+        assert restored.project.title == "New work"
+        restored.close()
+        assert original.read_bytes() == contents
+
+
+@pytest.mark.parametrize("choice", ["No", "Cancel"])
+def test_recovery_is_only_discarded_explicitly(qapp, tmp_path, monkeypatch, choice):
+    from PySide6.QtWidgets import QMessageBox
+
+    from kyykka_editor.app import MainWindow
+
+    path = tmp_path / "recovery.kyykka"
+    write_project(path, EditorProject(title="Old work"))
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *args: getattr(QMessageBox.StandardButton, choice)
+    )
+    window = MainWindow()
+    window.start_session()
+    assert path.exists() == (choice == "Cancel")
+    window.close()
+    assert path.exists() == (choice == "Cancel")
+
+
 def test_project_round_trip(tmp_path):
     project = EditorProject(
         title="Kyykkä",

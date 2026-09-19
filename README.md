@@ -296,7 +296,12 @@ Changed projects are autosaved every five seconds to a separate recovery file.
 After an unexpected shutdown, the next launch offers to recover that work.
 Recovery opens an unsaved project so you can choose where to save it. Opening
 another project, creating a new match, or closing the application offers
-Save/Discard/Cancel for unsaved changes. A normal close clears the recovery copy.
+Save/Discard/Cancel for unsaved changes. A normal close clears the current
+session's recovery copy. If recovery fails or locating a missing video is
+cancelled, the original recovery file remains intact and is offered again on a
+later launch. New work uses a separate recovery file so it cannot overwrite
+the retained project. Answering No to a recovery prompt discards that copy;
+Cancel leaves it available for later.
 
 Thrower cycling follows dropdown order and wraps in either direction, including
 the blank selection.

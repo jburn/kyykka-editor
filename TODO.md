@@ -2,8 +2,8 @@
 
 ## High-priority fixes
 
-- [ ] Preserve the recovery file when recovery fails or locating the source video is cancelled. Delete it only after successful recovery or explicit discard. Add regression coverage for failed recovery followed by closing the app.
-- [ ] Prevent large highlight exports from exceeding Windows' command-line limit. Move the FFmpeg filter graph into a file and check whether inputs also need batching. Test realistic match sizes, including 96 throws with player overlays and long file paths.
+- [x] Preserve failed or cancelled recoveries across closing, saving, and autosaving new work. New sessions use a separate recovery file when necessary; retained recoveries are offered on subsequent launches. Regression tests cover unreadable projects and cancelled video lookup.
+- [x] Prevent large highlight exports from exceeding Windows' command-line limit. Store the filter graph and per-throw overlay references in a file, keeping the command line independent of throw count. A real FFmpeg regression test exports 96 throws with unique player overlays and long file paths.
 
 ## Correctness and reliability
 

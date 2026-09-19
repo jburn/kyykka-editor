@@ -33,7 +33,11 @@ class RenderCancelled(RenderError):
 
 
 def _run_render(
-    command: list[str], cancel: Event, poll_progress: Callable[[], None] | None = None
+    command: list[str],
+    cancel: Event,
+    poll_progress: Callable[[], None] | None = None,
+    *,
+    cwd: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     if cancel.is_set():
         raise RenderCancelled()
@@ -44,6 +48,7 @@ def _run_render(
         text=True,
         encoding="utf-8",
         errors="replace",
+        cwd=cwd,
         **_media_subprocess_options(),
     ) as process:
         while True:
@@ -514,6 +519,7 @@ def render_highlights(
     cancel: Event | None = None,
     progress: Callable[[int], None] | None = None,
 ) -> None:
+    output_path = output_path.resolve()
     cancel = cancel if cancel is not None else Event()
     if cancel.is_set():
         raise RenderCancelled()
@@ -590,7 +596,7 @@ def _render_highlights(
     frame_rate_ffmpeg = f"{frame_rate.numerator}/{frame_rate.denominator}"
 
     temporary_paths: list[Path] = []
-    command = [ffmpeg, "-y", "-fflags", "+genpts", "-i", project.video_path]
+    command = [ffmpeg, "-y", "-fflags", "+genpts", "-i", str(Path(project.video_path).resolve())]
     filters: list[str] = []
     video_labels: list[str] = []
     audio_labels: list[str] = []
@@ -759,15 +765,15 @@ def _render_highlights(
                 overlay_path = output_path.parent / f".kyykka-thrower-{uuid.uuid4().hex}.png"
                 temporary_paths.append(overlay_path)
                 create_thrower_overlay(impact.thrower, overlay_path, (width, height))
-                command.extend(
-                    ["-loop", "1", "-framerate", frame_rate_ffmpeg, "-i", str(overlay_path)]
-                )
+                # Generated basenames need no filter escaping. Resolve them in
+                # the staging directory, keeping user paths and per-throw inputs
+                # out of the command line even for large matches.
                 filters.append(
-                    f"[{input_index}:v]format=rgba[overlay{clip_index}];"
+                    f"movie=filename={overlay_path.name}:loop=0:dec_threads=1,"
+                    f"setpts=N/(({frame_rate_ffmpeg})*TB),format=rgba[overlay{clip_index}];"
                     f"[basev{clip_index}][overlay{clip_index}]"
                     f"overlay=0:0:shortest=1[v{clip_index}]"
                 )
-                input_index += 1
             else:
                 filters.append(f"[basev{clip_index}]null[v{clip_index}]")
             video_labels.append(f"[v{clip_index}]")
@@ -823,7 +829,10 @@ def _render_highlights(
         filters.append(f"{''.join(video_labels)}concat=n={len(video_labels)}:v=1:a=0[outv]")
     filters.append("[outv]scale=in_range=auto:out_range=tv,format=yuv420p[compatv]")
 
-    command.extend(["-filter_complex", ";".join(filters), "-map", "[compatv]"])
+    graph_path = output_path.parent / "filters.ffscript"
+    graph_path.write_text(";".join(filters), encoding="utf-8")
+    temporary_paths.append(graph_path)
+    command.extend(["-filter_complex_script", str(graph_path), "-map", "[compatv]"])
     if has_audio:
         command.extend(["-map", "[outa]", "-c:a", "aac", "-b:a", "192k"])
     else:
@@ -857,7 +866,7 @@ def _render_highlights(
     )
     try:
         if progress is None:
-            result = _run_render(command, cancel)
+            result = _run_render(command, cancel, cwd=output_path.parent)
         else:
             # A separate progress file lets communicate() drain diagnostics on Windows
             # while cancellation and progress polling remain responsive.
@@ -887,7 +896,7 @@ def _render_highlights(
                             progress(percent)
 
                 progress(0)
-                result = _run_render(command, cancel, poll_progress)
+                result = _run_render(command, cancel, poll_progress, cwd=output_path.parent)
     finally:
         for temporary_path in temporary_paths:
             temporary_path.unlink(missing_ok=True)

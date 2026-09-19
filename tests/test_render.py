@@ -318,6 +318,7 @@ def test_render_command_preserves_rate_and_requests_windows_compatible_video(
     )
     captured: list[str] = []
     captured_options: dict[str, object] = {}
+    graphs = []
 
     monkeypatch.setattr("kyykka_editor.render.shutil.which", lambda name: name)
     monkeypatch.setattr("kyykka_editor.render.source_has_audio", lambda _path: True)
@@ -340,9 +341,11 @@ def test_render_command_preserves_rate_and_requests_windows_compatible_video(
     updates = []
 
     def fake_run(
-        command: list[str], _cancel: object, poll_progress=None
+        command: list[str], _cancel: object, poll_progress=None, *, cwd=None
     ) -> subprocess.CompletedProcess[str]:
         captured.extend(command)
+        graphs.append(Path(command[command.index("-filter_complex_script") + 1]).read_text())
+        assert cwd == Path(command[-1]).parent
         captured_options.update(render_module._media_subprocess_options())
         if poll_progress is not None:
             path = Path(command[command.index("-progress") + 1])
@@ -368,7 +371,7 @@ def test_render_command_preserves_rate_and_requests_windows_compatible_video(
         assert updates == [0, 50, 99, 100]
 
     command = " ".join(captured)
-    filter_graph = captured[captured.index("-filter_complex") + 1]
+    filter_graph = graphs[0]
     assert "fps=60000/1001" in filter_graph
     assert "xfade=transition=fade" in filter_graph
     assert "trim=start=1.000:end=9.000" in filter_graph
@@ -405,6 +408,7 @@ def test_failed_render_writes_diagnostic_log_and_cleans_temporary_files(
         render_highlights(project, output, 10_000)
     assert output.with_suffix(".ffmpeg-error.log").read_text(encoding="utf-8") == "encoder exploded"
     assert not list(tmp_path.glob(".kyykka-*.png"))
+    assert not list(tmp_path.glob(".kyykka-render-*"))
 
 
 def test_cancel_stops_process_and_drains_pipes(monkeypatch):

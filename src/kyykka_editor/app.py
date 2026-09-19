@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sys
+import uuid
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import replace
@@ -1744,22 +1745,40 @@ class MainWindow(QMainWindow):
         self.autosaved_project = current
 
     def start_session(self) -> None:
-        if self.recovery_path.exists():
+        candidates = [
+            self.recovery_path,
+            *sorted(self.recovery_path.parent.glob("recovery-*.kyykka")),
+        ]
+        for path in candidates:
+            if not path.exists():
+                continue
             choice = QMessageBox.question(
                 self,
                 tr("Autosave recovery"),
-                tr("Recover the autosaved project from the previous session?"),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                tr("Recover the autosaved project from the previous session?") + f"\n\n{path}",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
                 QMessageBox.StandardButton.Yes,
             )
-            if choice == QMessageBox.StandardButton.Yes and not self._open_project_path(
-                self.recovery_path, recovering=True
-            ):
-                self.persistence_started = True
-                self.autosave_timer.start()
-                return
+            if choice == QMessageBox.StandardButton.Yes:
+                if self._open_project_path(path, recovering=True):
+                    self.recovery_path = path
+                    break
+            elif choice == QMessageBox.StandardButton.No:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError as error:
+                    QMessageBox.warning(self, tr("Autosave recovery"), str(error))
+        else:
+            # A failed recovery belongs to the previous session. New work must
+            # neither overwrite it on autosave nor delete it on save/close.
+            if self.recovery_path.exists():
+                self.recovery_path = self.recovery_path.with_name(
+                    f"recovery-{uuid.uuid4().hex}.kyykka"
+                )
         self.persistence_started = True
-        self._clear_recovery()
+        self.autosaved_project = None
         self.autosave_timer.start()
         self._autosave()
 

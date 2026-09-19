@@ -17,6 +17,86 @@ pytestmark = pytest.mark.integration
     not shutil.which("ffmpeg") or not shutil.which("ffprobe"),
     reason="FFmpeg and FFprobe are required",
 )
+def test_large_match_with_overlays_keeps_command_short(tmp_path, qapp, monkeypatch):
+    from kyykka_editor import render
+
+    directory = tmp_path / ("Player's matches " + "x" * 25)
+    directory.mkdir()
+    source = directory / "source.mp4"
+    output = directory / ("Highlights " + "y" * 35 + ".mp4")
+    subprocess.run(
+        [
+            shutil.which("ffmpeg"),
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=160x90:rate=10:duration=12",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=12",
+            "-c:v",
+            "libx264",
+            "-c:a",
+            "aac",
+            str(source),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    project = EditorProject(
+        video_path=str(source),
+        title="Large match",
+        pre_roll_ms=0,
+        post_roll_ms=100,
+        impacts=[Impact((i + 1) * 100, f"Player {i}") for i in range(96)],
+        round_one_end_ms=5000,
+        game_end_ms=11000,
+    )
+    run = render._run_render
+    lengths = []
+
+    def checked_run(command, cancel, poll_progress=None, *, cwd=None):
+        lengths.append(len(subprocess.list2cmdline(command)))
+        assert lengths[-1] < 8000
+        graph = Path(command[command.index("-filter_complex_script") + 1]).read_text()
+        assert graph.count("movie=filename=") == 96
+        assert "Player's matches" not in graph
+        return run(command, cancel, poll_progress, cwd=cwd)
+
+    monkeypatch.setattr(render, "_run_render", checked_run)
+    updates = []
+    render_highlights(project, output, 12000, progress=updates.append)
+    assert len(lengths) == 1
+    assert updates[-1] == 100
+    probe = subprocess.run(
+        [
+            shutil.which("ffprobe"),
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "json",
+            str(output),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    _, duration = estimate_export(project, 12000)
+    assert float(json.loads(probe.stdout)["format"]["duration"]) == pytest.approx(
+        duration / 1000, abs=0.3
+    )
+    assert not list(directory.glob(".kyykka-render-*"))
+
+
+@pytest.mark.skipif(
+    not shutil.which("ffmpeg") or not shutil.which("ffprobe"),
+    reason="FFmpeg and FFprobe are required",
+)
 @pytest.mark.parametrize("with_title", [True, False])
 @pytest.mark.parametrize("with_round", [False, True])
 @pytest.mark.parametrize("background_mode", ["static", "video", "freeze"])
