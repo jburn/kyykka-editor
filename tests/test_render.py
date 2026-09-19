@@ -344,7 +344,7 @@ def test_render_command_preserves_rate_and_requests_windows_compatible_video(
         command: list[str], _cancel: object, poll_progress=None, *, cwd=None
     ) -> subprocess.CompletedProcess[str]:
         captured.extend(command)
-        graphs.append(Path(command[command.index("-filter_complex_script") + 1]).read_text())
+        graphs.append(Path(command[command.index("-/filter_complex") + 1]).read_text())
         assert cwd == Path(command[-1]).parent
         captured_options.update(render_module._media_subprocess_options())
         if poll_progress is not None:

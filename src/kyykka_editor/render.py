@@ -832,7 +832,7 @@ def _render_highlights(
     graph_path = output_path.parent / "filters.ffscript"
     graph_path.write_text(";".join(filters), encoding="utf-8")
     temporary_paths.append(graph_path)
-    command.extend(["-filter_complex_script", str(graph_path), "-map", "[compatv]"])
+    command.extend(["-/filter_complex", str(graph_path), "-map", "[compatv]"])
     if has_audio:
         command.extend(["-map", "[outa]", "-c:a", "aac", "-b:a", "192k"])
     else:

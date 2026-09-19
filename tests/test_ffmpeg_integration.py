@@ -61,7 +61,7 @@ def test_large_match_with_overlays_keeps_command_short(tmp_path, qapp, monkeypat
     def checked_run(command, cancel, poll_progress=None, *, cwd=None):
         lengths.append(len(subprocess.list2cmdline(command)))
         assert lengths[-1] < 8000
-        graph = Path(command[command.index("-filter_complex_script") + 1]).read_text()
+        graph = Path(command[command.index("-/filter_complex") + 1]).read_text()
         assert graph.count("movie=filename=") == 96
         assert "Player's matches" not in graph
         return run(command, cancel, poll_progress, cwd=cwd)
