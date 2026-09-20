@@ -16,6 +16,10 @@ a compact highlight video around those moments. Made explicitly for editing kyyk
 
 ![Match details](docs/screenshots/match-details.png)
 
+Playback skips and default highlight timing are configured under **Settings → Preferences**:
+
+![Preferences: playback skips and project highlight timing](docs/screenshots/preferences.png)
+
 ![Export](docs/screenshots/export.png)
 
 ## Features
@@ -37,7 +41,10 @@ a compact highlight video around those moments. Made explicitly for editing kyyk
 ## Requirements
 
 - Python 3.11 or newer
-- FFmpeg available on `PATH` for exporting videos
+- FFmpeg and FFprobe available on `PATH` for exporting and combining videos
+
+These requirements apply when running from source. The Windows package includes
+Python, Qt, FFmpeg, and FFprobe.
 
 ## Install and run
 
@@ -73,7 +80,7 @@ saved preferences and projects untouched.
 Install the development dependencies and run the packaging script:
 
 ```powershell
-.\venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
 .\packaging\build.ps1
 ```
@@ -184,12 +191,13 @@ discards them. Loading does not change existing projects unless **Also apply to
 the current project** is checked when saving. Presets reference background image
 files, so keep those images available.
 
-In **Settings → Screen settings**, each screen can use **Color or image**,
+In **Settings → Screen settings**, each screen can use **Color**, **Image**,
 **Dimmed + blurred video**, or **Dimmed freeze-frame**. Title backgrounds use
 footage before the first highlight; result backgrounds use footage after the
 preceding highlight. Short backgrounds hold the last available frame. These
-backgrounds are silent and keep the existing card fades. Settings previews show
-text styling on a dark background; video backgrounds are composed during export.
+backgrounds are silent and keep the existing card fades. For video and freeze-frame
+backgrounds, settings previews show text styling on a dark background; the source
+footage is composed during export. Color and image previews show the chosen background.
 Enable **Also apply to the current project** to use changed defaults immediately.
 
 Round-end cards crossfade from the preceding highlight and into the next round's
@@ -334,5 +342,5 @@ controls. Throws with overrides are labeled **custom timing** in the timeline.
 Overrides apply to export and the duration estimate; the existing extra footage
 for the first and last throws still applies.
 
-Default Before/After impact timing is configured in **Settings ? Preferences?**.
+Default Before/After impact timing is configured in **Settings → Preferences**.
 These values are saved with the current project and apply to throws without overrides.

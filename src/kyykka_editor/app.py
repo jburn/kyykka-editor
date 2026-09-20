@@ -165,7 +165,7 @@ class AboutDialog(QDialog):
                 "under those terms. There is no warranty. See LICENSE in the application "
                 "directory for the complete license.\n\n"
                 "FFmpeg and FFprobe\n"
-                "The packaged Gyan full build is GPL-enabled. The exact obligations depend on "
+                "Official Windows packages use the Gyan essentials build. The exact obligations depend on "
                 "the included build. See THIRD_PARTY_NOTICES.md in the application directory.\n\n"
                 "PySide6 / Qt for Python\n"
                 "Available under LGPLv3, GPLv3, and commercial licensing terms."
