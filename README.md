@@ -103,21 +103,16 @@ summary page and download `KyykkaEditor-windows-x64-…` from the **Artifacts**
 section. CI artifacts are retained for 14 days; they are development packages,
 not GitHub Releases.
 
-Every package includes `sha256.txt` beside the executable, containing its hash.
-Release downloads also include a separate `sha256.txt` for the
-complete ZIP. Each checksum file contains the SHA-256 hash followed by the
-filename. To verify a downloaded ZIP in PowerShell, run this from its folder:
+GitHub automatically displays a SHA-256 checksum beside each uploaded release
+asset. To check a downloaded ZIP, calculate its hash in PowerShell and compare
+it with the value shown on the release page:
 
 ```powershell
-$expected = (Get-Content -LiteralPath .\sha256.txt).Split(' ')[0]
-$actual = (Get-FileHash -LiteralPath .\KyykkaEditor-windows-x64.zip -Algorithm SHA256).Hash
-if ($actual -ne $expected) { throw "Checksum mismatch" }
-Write-Host "Checksum verified"
+Get-FileHash -LiteralPath .\KyykkaEditor-windows-x64.zip -Algorithm SHA256
 ```
 
-To check the extracted executable instead, run the same commands from the
-extracted package folder using its included `sha256.txt`, and replace the ZIP
-filename with `KyykkaEditor.exe`.
+See [GitHub's release checksum announcement](https://github.blog/changelog/2025-06-03-releases-now-expose-digests-for-release-assets/)
+for details.
 
 CI downloads the pinned Gyan FFmpeg 9.0.1 essentials build and verifies its
 published SHA-256 checksum before running integration tests or packaging it.
@@ -134,8 +129,7 @@ git push origin v0.1.0
 
 CI verifies that the tag matches the application version, runs the complete
 test/package pipeline, and publishes a GitHub Release containing
-`KyykkaEditor-windows-x64.zip` and `sha256.txt` with generated release
-notes. CI verifies the ZIP checksum before publishing. A mismatched tag
+`KyykkaEditor-windows-x64.zip` with generated release notes. A mismatched tag
 fails without creating a release.
 
 ## License

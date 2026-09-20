@@ -1,10 +1,5 @@
-import hashlib
-import shutil
-import subprocess
 import tomllib
 from pathlib import Path
-
-import pytest
 
 from kyykka_editor import __version__
 
@@ -36,7 +31,6 @@ def test_build_script_validates_complete_output() -> None:
         assert required in script
     assert "Get-Command python.exe" in script
     assert "$PythonExecutable -m PyInstaller" in script
-    assert "write-checksum.ps1" in script
 
 
 def test_ci_uploads_a_validated_windows_archive() -> None:
@@ -55,7 +49,6 @@ def test_ci_uploads_a_validated_windows_archive() -> None:
     assert "path: dist/KyykkaEditor" in workflow
     assert "if-no-files-found: error" in workflow
     assert "retention-days: 14" in workflow
-    assert "dist/KyykkaEditor/sha256.txt" in workflow
 
 
 def test_version_tags_publish_github_releases() -> None:
@@ -72,38 +65,6 @@ def test_version_tags_publish_github_releases() -> None:
     assert workflow.count('--repo "$GITHUB_REPOSITORY"') == 3
     assert "--clobber" in workflow
     assert "--generate-notes" in workflow
-    assert "write-checksum.ps1 -Path dist/KyykkaEditor-windows-x64.zip" in workflow
-    assert "sha256sum --check --strict sha256.txt" in workflow
-    assert 'checksum="dist/sha256.txt#SHA-256 checksum"' in workflow
-    assert 'gh release upload "$GITHUB_REF_NAME" "$asset" "$checksum"' in workflow
-    assert 'gh release create "$GITHUB_REF_NAME" "$asset" "$checksum"' in workflow
-
-
-@pytest.mark.parametrize("payload", [b"", b"test executable\x00\xff\r\n"])
-def test_checksum_script_hashes_exact_bytes_and_replaces_stale_checksum(tmp_path, payload):
-    shell = shutil.which("pwsh") or shutil.which("powershell")
-    if shell is None:
-        pytest.skip("PowerShell is required")
-    path = tmp_path / "editor's test.exe"
-    path.write_bytes(payload)
-    checksum = path.with_name("sha256.txt")
-    checksum.write_text("stale checksum", encoding="utf-8")
-    subprocess.run(
-        [
-            shell,
-            "-NoProfile",
-            "-NonInteractive",
-            "-File",
-            str(PROJECT_ROOT / "packaging/write-checksum.ps1"),
-            "-Path",
-            str(path),
-        ],
-        check=True,
-        capture_output=True,
-    )
-    expected = f"{hashlib.sha256(payload).hexdigest()}  {path.name}\n".encode()
-    assert checksum.read_bytes() == expected
-    assert path.read_bytes() == payload
 
 
 def test_project_declares_and_contains_gplv3_or_later() -> None:
