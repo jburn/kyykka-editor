@@ -17,6 +17,90 @@ pytestmark = pytest.mark.integration
     not shutil.which("ffmpeg") or not shutil.which("ffprobe"),
     reason="FFmpeg and FFprobe are required",
 )
+@pytest.mark.parametrize(
+    "rotation,sar,expected",
+    [
+        (90, "1/1", (180, 320)),
+        (-90, "2/1", (180, 640)),
+        (0, "2/1", (640, 180)),
+    ],
+)
+@pytest.mark.parametrize("background", ["color", "video", "freeze"])
+def test_display_proportions_survive_render_and_combine(
+    tmp_path,
+    qapp,
+    rotation,
+    sar,
+    expected,
+    background,
+):
+    from kyykka_editor.combine import combine_videos, inspect_videos
+
+    encoded = tmp_path / "encoded.mp4"
+    source = tmp_path / "source.mp4"
+    output = tmp_path / "highlights.mp4"
+    ffmpeg = shutil.which("ffmpeg")
+    subprocess.run(
+        [
+            ffmpeg,
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=320x180:rate=10:duration=2",
+            "-vf",
+            f"setsar={sar}",
+            "-c:v",
+            "libx264",
+            str(encoded),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            ffmpeg,
+            "-v",
+            "error",
+            "-display_rotation",
+            str(rotation),
+            "-i",
+            str(encoded),
+            "-c",
+            "copy",
+            str(source),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    project = EditorProject(
+        video_path=str(source),
+        title="Display proportions",
+        impacts=[Impact(500)],
+        round_one_end_ms=1000,
+        game_end_ms=1500,
+    )
+    for style in (project.title_style, project.round_style, project.final_style):
+        style.background_mode = background
+    render_highlights(project, output, 2000)
+    original, rendered = inspect_videos([source, output])
+    assert (original.width, original.height) == expected
+    assert (rendered.width, rendered.height) == expected
+    video = next(s for s in rendered.streams if s["codec_type"] == "video")
+    assert (video["width"], video["height"]) == expected
+    assert video["sample_aspect_ratio"] == "1:1"
+    assert all(s.get("rotation", 0) == 0 for s in video.get("side_data_list", []))
+    combined = tmp_path / "combined.mp4"
+    combine_videos([original, rendered], combined, convert=True)
+    result = inspect_videos([combined, combined])[0]
+    assert (result.width, result.height) == expected
+
+
+@pytest.mark.skipif(
+    not shutil.which("ffmpeg") or not shutil.which("ffprobe"),
+    reason="FFmpeg and FFprobe are required",
+)
 def test_large_match_with_overlays_keeps_command_short(tmp_path, qapp, monkeypatch):
     from kyykka_editor import render
 

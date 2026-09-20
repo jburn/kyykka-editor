@@ -628,10 +628,10 @@ def test_missing_title_export_confirmation(qapp, monkeypatch, proceed):
 
     def choose_file(*args, **kwargs):
         file_dialogs.append(True)
-        return "", ""
+        return QFileDialog.DialogCode.Rejected
 
     monkeypatch.setattr(QMessageBox, "question", confirm)
-    monkeypatch.setattr(QFileDialog, "getSaveFileName", choose_file)
+    monkeypatch.setattr(QFileDialog, "exec", choose_file)
     window.export_video()
     assert len(prompts) == 1
     for label in ("Match title", "Team 1 name", "Team 2 name"):

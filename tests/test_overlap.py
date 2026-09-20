@@ -51,10 +51,10 @@ def test_overlap_warning_allows_cancel_or_proceed(qapp, monkeypatch, proceed):
 
     def choose(*args, **kwargs):
         files.append(True)
-        return "", ""
+        return QFileDialog.DialogCode.Rejected
 
     monkeypatch.setattr(QMessageBox, "question", confirm)
-    monkeypatch.setattr(QFileDialog, "getSaveFileName", choose)
+    monkeypatch.setattr(QFileDialog, "exec", choose)
     window.export_video()
     assert len(messages) == 1
     assert "00:00:10.000" in messages[0]

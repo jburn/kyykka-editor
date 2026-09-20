@@ -122,12 +122,33 @@ def source_has_audio(video_path: str) -> bool:
         return False
 
 
+def display_dimensions(stream: dict) -> tuple[int, int]:
+    """Square-pixel dimensions after FFmpeg autorotation, rounded up for H.264."""
+    width, height = int(stream["width"]), int(stream["height"])
+    sar = stream.get("sample_aspect_ratio", "1:1")
+    if sar not in ("N/A", "0:1"):
+        width = round(width * Fraction(sar.replace(":", "/")))
+    rotation = next(
+        (data["rotation"] for data in stream.get("side_data_list", []) if "rotation" in data),
+        stream.get("tags", {}).get("rotate", 0),
+    )
+    if abs(round(float(rotation))) % 180 == 90:
+        width, height = height, width
+    if min(width, height) <= 0:
+        raise ValueError("Invalid video dimensions")
+    return width + width % 2, height + height % 2
+
+
 def source_dimensions(video_path: str) -> tuple[int, int]:
-    result = _probe(video_path, "stream=width,height", "v:0")
+    result = _probe(
+        video_path,
+        "stream=width,height,sample_aspect_ratio:stream_side_data=rotation:stream_tags=rotate",
+        "v:0",
+    )
     try:
         stream = json.loads(result.stdout)["streams"][0]
-        return int(stream["width"]), int(stream["height"])
-    except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as error:
+        return display_dimensions(stream)
+    except (KeyError, IndexError, TypeError, ValueError, ZeroDivisionError, OverflowError) as error:
         raise RenderError(tr("Could not determine the source video's dimensions")) from error
 
 

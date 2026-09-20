@@ -1789,8 +1789,9 @@ class MainWindow(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         current_thrower = self.thrower_combo.currentText()
+        previous_video = self.project.video_path
         dialog.apply_to(self.project)
-        self._load_form()
+        self._load_form(reload_video=self.project.video_path != previous_video)
         thrower_index = self.thrower_combo.findText(current_thrower)
         self.thrower_combo.setCurrentIndex(max(0, thrower_index))
 
@@ -2103,7 +2104,7 @@ class MainWindow(QMainWindow):
             items.append(("Game end", self.project.game_end_ms, None))
         return sorted(items, key=lambda item: (item[1], item[0]))
 
-    def _refresh_impacts(self) -> None:
+    def _refresh_impacts(self, *, stop_preview: bool = True) -> None:
         names = (
             [self.project.team_one]
             if self.project.solo
@@ -2114,7 +2115,8 @@ class MainWindow(QMainWindow):
         summary = "\n".join(text for text in (title, matchup if matchup != title else "") if text)
         self.match_summary.setText(summary or tr("Untitled project"))
         self.match_summary.setToolTip(summary)
-        self.stop_preview()
+        if stop_preview:
+            self.stop_preview()
         self.slider.set_markers(
             [impact.timestamp_ms for impact in self.project.impacts],
             self.project.round_one_end_ms,
@@ -2368,7 +2370,7 @@ class MainWindow(QMainWindow):
         next_index = (current_index + direction) % self.thrower_combo.count()
         self.thrower_combo.setCurrentIndex(next_index)
 
-    def _load_form(self) -> None:
+    def _load_form(self, *, reload_video: bool = True) -> None:
         self.thrower_combo.clear()
         self.thrower_combo.addItem("")
         self.thrower_combo.addItems(self.project.throwers)
@@ -2376,7 +2378,10 @@ class MainWindow(QMainWindow):
             self.thrower_combo.setCurrentIndex(
                 max(0, self.thrower_combo.findText(self.pending_resume[1]))
             )
-        self._refresh_impacts()
+        self._refresh_impacts(stop_preview=reload_video)
+        if not reload_video:
+            self._update_action_states()
+            return
         if self.project.video_path:
             self._load_video(Path(self.project.video_path))
         else:
@@ -2461,15 +2466,15 @@ class MainWindow(QMainWindow):
         default_dir = QStandardPaths.writableLocation(
             QStandardPaths.StandardLocation.MoviesLocation
         )
-        filename, _ = QFileDialog.getSaveFileName(
-            self,
-            tr("Export highlights"),
-            str(Path(default_dir) / default_export_filename(self.project)),
-            tr("MP4 video (*.mp4)"),
-            options=QFileDialog.Option.DontUseNativeDialog,
-        )
-        if not filename:
+        picker = QFileDialog(self, tr("Export highlights"))
+        picker.setOption(QFileDialog.Option.DontUseNativeDialog)
+        picker.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
+        picker.setNameFilter(tr("MP4 video (*.mp4)"))
+        picker.setDefaultSuffix("mp4")
+        picker.selectFile(str(Path(default_dir) / default_export_filename(self.project)))
+        if picker.exec() != QDialog.DialogCode.Accepted:
             return
+        filename = picker.selectedFiles()[0]
         self.export_button.setEnabled(False)
         self.export_button.setText(tr("Rendering…"))
         snapshot = deepcopy(self.project)

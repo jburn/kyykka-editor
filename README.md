@@ -65,6 +65,9 @@ Integration tests generate a small video, render a complete highlight with the
 real FFmpeg executable, and inspect the result with FFprobe. They require both
 programs on `PATH`. The same checks run on Windows in GitHub Actions.
 
+Tests use temporary application settings and recovery directories, leaving your
+saved preferences and projects untouched.
+
 ## Build a distributable Windows application
 
 Install the development dependencies and run the packaging script:
@@ -137,6 +140,11 @@ contain separately licensed components; see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Controls
+
+Saving Match details preserves playback position and paused/playing state when
+the source video is unchanged. Highlight exports preserve portrait rotation and
+the displayed proportions of non-square-pixel footage. Export filenames receive
+a `.mp4` extension automatically when none is entered.
 
 Small amber ticks below the playback slider show marked throws. They update when
 throws are added, edited, or removed; slider clicking and keyboard seeking work as before.

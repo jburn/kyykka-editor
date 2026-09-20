@@ -12,7 +12,7 @@ from tempfile import TemporaryDirectory
 from threading import Event
 
 from .i18n import tr
-from .render import RenderCancelled, RenderError, _run_render, find_media_tool
+from .render import RenderCancelled, RenderError, _run_render, display_dimensions, find_media_tool
 
 
 @dataclass(frozen=True)
@@ -71,16 +71,7 @@ def inspect_videos(paths: Sequence[Path], cancel: Event | None = None) -> list[V
             rate = Fraction(video.get("avg_frame_rate", "0/1"))
             if rate <= 0:
                 rate = Fraction(video["r_frame_rate"])
-            width, height = int(video["width"]), int(video["height"])
-            sar = video.get("sample_aspect_ratio", "1:1")
-            if sar not in ("N/A", "0:1"):
-                width = round(width * Fraction(sar.replace(":", "/")))
-            rotation = next(
-                (s.get("rotation", 0) for s in video.get("side_data_list", []) if "rotation" in s),
-                0,
-            )
-            if abs(round(float(rotation))) % 180 == 90:
-                width, height = height, width
+            width, height = display_dimensions(video)
             if (
                 not math.isfinite(duration)
                 or duration <= 0
@@ -88,11 +79,16 @@ def inspect_videos(paths: Sequence[Path], cancel: Event | None = None) -> list[V
                 or not 0 < rate <= 240
             ):
                 raise ValueError("Invalid video dimensions, duration or frame rate")
-        except (ValueError, KeyError, TypeError, StopIteration, ZeroDivisionError) as error:
+        except (
+            ValueError,
+            KeyError,
+            TypeError,
+            StopIteration,
+            ZeroDivisionError,
+            OverflowError,
+        ) as error:
             raise RenderError(tr("Could not read video: {path}", path=path)) from error
-        videos.append(
-            VideoInfo(path, duration, streams, width + width % 2, height + height % 2, rate)
-        )
+        videos.append(VideoInfo(path, duration, streams, width, height, rate))
     return videos
 
 

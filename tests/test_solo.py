@@ -104,7 +104,7 @@ def test_solo_does_not_warn_about_second_team(qapp, monkeypatch):
     )
     prompts = []
     monkeypatch.setattr(QMessageBox, "question", lambda *args: prompts.append(args))
-    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *args, **kwargs: ("", ""))
+    monkeypatch.setattr(QFileDialog, "exec", lambda *args: QFileDialog.DialogCode.Rejected)
     window.export_video()
     assert not prompts
     window.close()

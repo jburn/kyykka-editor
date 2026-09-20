@@ -257,6 +257,37 @@ def test_source_frame_rate_falls_back_to_average(monkeypatch: pytest.MonkeyPatch
     assert source_frame_rate("source.mp4") == Fraction(25, 1)
 
 
+@pytest.mark.parametrize(
+    "sar,rotation,expected",
+    [
+        ("1:1", 0, (320, 180)),
+        ("2:1", 0, (640, 180)),
+        ("2:1", 90, (180, 640)),
+        ("1:1", -90, (180, 320)),
+        ("N/A", 180, (320, 180)),
+        ("0:1", 270, (180, 320)),
+    ],
+)
+def test_source_dimensions_match_display(monkeypatch, sar, rotation, expected):
+    monkeypatch.setattr(
+        render_module,
+        "_probe",
+        lambda *args: _probe_result(
+            {
+                "streams": [
+                    {
+                        "width": 320,
+                        "height": 180,
+                        "sample_aspect_ratio": sar,
+                        "side_data_list": [{"rotation": rotation}],
+                    }
+                ]
+            }
+        ),
+    )
+    assert source_dimensions("source.mp4") == expected
+
+
 @pytest.mark.parametrize("payload", [{}, {"streams": []}, {"streams": [{}]}])
 def test_invalid_dimensions_raise_render_error(
     monkeypatch: pytest.MonkeyPatch, payload: object
